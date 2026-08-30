@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import WebSocket from 'ws';
 import { applySchema } from '../../src/main/db/schema';
-import { seedDefaultOutputStyles } from '../../src/main/db/outputStylesRepository';
+import { getStyles, seedDefaultOutputStyles, setActiveStyle } from '../../src/main/db/outputStylesRepository';
 import { addStagedItem } from '../../src/main/db/stagedItemsRepository';
 import { setLiveState, setOutputHidden } from '../../src/main/db/liveStateRepository';
-import { createServer, ServerHandle } from '../../src/main/server/server';
+import { createServer, buildOutputPayload, ServerHandle } from '../../src/main/server/server';
 
 let db: Database.Database;
 let server: ServerHandle;
@@ -30,6 +30,10 @@ beforeEach(async () => {
   ).run();
   db.prepare(
     `INSERT INTO bible_verses (id, book_id, chapter, verse, text) VALUES (1, 43, 3, 16, 'For God so loved the world.')`
+  ).run();
+  db.prepare(`INSERT INTO songs (id, title) VALUES (1, 'Amazing Grace')`).run();
+  db.prepare(
+    `INSERT INTO song_blocks (id, song_id, label, text, display_order) VALUES (1, 1, 'V1', 'Amazing grace, how sweet the sound', 0)`
   ).run();
   server = createServer(db);
   port = await server.start(0);
@@ -101,5 +105,54 @@ describe('embedded server', () => {
     expect(message.payload.hidden).toBe(true);
     expect(message.payload.reference).toBe('John 3:16');
     socket.close();
+  });
+
+  it('resolves templateKey from the active bible style when no styleId is pinned', () => {
+    const bibleStyles = getStyles(db, 'bible');
+    const activeStyle = bibleStyles[0];
+    setActiveStyle(db, 'bible', activeStyle.id);
+
+    const stagedItem = addStagedItem(db, 'bible', 43, 3);
+    setLiveState(db, stagedItem.id, 1, null); // production call shape: no explicit styleId
+
+    const payload = buildOutputPayload(db);
+    expect(payload.templateKey).toBe(activeStyle.templateKey);
+  });
+
+  it('resolves templateKey from the active song style when no styleId is pinned', () => {
+    const songStyles = getStyles(db, 'song');
+    const activeStyle = songStyles[0];
+    setActiveStyle(db, 'song', activeStyle.id);
+
+    const stagedItem = addStagedItem(db, 'song', 1, null);
+    setLiveState(db, stagedItem.id, 1, null); // production call shape: no explicit styleId
+
+    const payload = buildOutputPayload(db);
+    expect(payload.templateKey).toBe(activeStyle.templateKey);
+  });
+
+  it('resolves templateKey from an explicitly pinned styleId', () => {
+    const bibleStyles = getStyles(db, 'bible');
+    const pinnedStyle = bibleStyles[1];
+
+    const stagedItem = addStagedItem(db, 'bible', 43, 3);
+    setLiveState(db, stagedItem.id, 1, pinnedStyle.id);
+
+    const payload = buildOutputPayload(db);
+    expect(payload.templateKey).toBe(pinnedStyle.templateKey);
+  });
+
+  it('keeps the correct templateKey on a blanked payload so restore does not lose styling', () => {
+    const bibleStyles = getStyles(db, 'bible');
+    const activeStyle = bibleStyles[0];
+    setActiveStyle(db, 'bible', activeStyle.id);
+
+    const stagedItem = addStagedItem(db, 'bible', 43, 3);
+    setLiveState(db, stagedItem.id, 1, null);
+    setOutputHidden(db, true);
+
+    const payload = buildOutputPayload(db);
+    expect(payload.hidden).toBe(true);
+    expect(payload.templateKey).toBe(activeStyle.templateKey);
   });
 });

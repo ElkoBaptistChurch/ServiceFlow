@@ -16,6 +16,19 @@ const EMPTY_PAYLOAD: OutputPayload = {
   hidden: false,
 };
 
+/**
+ * Resolves the style to render with, always as the mapped (camelCase) `OutputStyle`
+ * shape -- whether the caller pinned a specific style or we fall back to the
+ * content type's active style. Both branches must agree on field names, or
+ * `buildOutputPayload` risks reading `templateKey` off one shape and getting
+ * `undefined` on the other.
+ */
+function resolveStyle(db: Database.Database, styleId: number | null, contentType: ContentType) {
+  if (!styleId) return getActiveStyle(db, contentType);
+  const row = db.prepare(`SELECT * FROM output_styles WHERE id = ?`).get(styleId) as any;
+  return row ? { id: row.id as number, templateKey: row.template_key as string } : undefined;
+}
+
 export function buildOutputPayload(db: Database.Database): OutputPayload {
   const live = getLiveState(db);
   if (!live.stagedItemId || !live.verseOrBlockId) return EMPTY_PAYLOAD;
@@ -24,16 +37,14 @@ export function buildOutputPayload(db: Database.Database): OutputPayload {
   if (!stagedItem) return EMPTY_PAYLOAD;
 
   const contentType = stagedItem.type as ContentType;
-  const style = live.styleId
-    ? (db.prepare(`SELECT * FROM output_styles WHERE id = ?`).get(live.styleId) as any)
-    : getActiveStyle(db, contentType);
+  const style = resolveStyle(db, live.styleId, contentType);
 
   // `reference` comes from liveStateRepository so the operator banner, the OBS output
   // and the tests can never disagree about what is on screen.
   const base = {
     reference: live.reference,
     styleId: style?.id ?? null,
-    templateKey: style?.template_key ?? null,
+    templateKey: style?.templateKey ?? null,
     hidden: live.hidden,
   };
 
