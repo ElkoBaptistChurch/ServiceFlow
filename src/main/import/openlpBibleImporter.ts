@@ -44,16 +44,34 @@ export function importOpenlpBible(
     // and never let one escape into the rest of the app.
     const bookIdBySourceId = new Map<number, number>();
     const bookTx = mainDb.transaction((bookRows: any[]) => {
-      for (const b of bookRows) {
-        upsertBook.run(
-          translation,
-          b.id,
-          b.name,
-          mapTestament(b.testament_reference_id),
-          b.book_reference_id ?? b.id // display order; NOT a key — KJV reuses 15 twice
-        );
-        bookIdBySourceId.set(b.id, (getBookId.get(translation, b.id) as { id: number }).id);
-      }
+      bookRows.forEach((b, index) => {
+        try {
+          if (b.id == null) {
+            // Nothing to key this book's verses off of — skip it explicitly rather
+            // than letting the NOT NULL constraint on source_book_id throw for us.
+            throw new Error('book has a NULL id and cannot be linked to its verses');
+          }
+          upsertBook.run(
+            translation,
+            b.id,
+            b.name,
+            mapTestament(b.testament_reference_id),
+            b.book_reference_id ?? b.id // display order; NOT a key — KJV reuses 15 twice
+          );
+          bookIdBySourceId.set(b.id, (getBookId.get(translation, b.id) as { id: number }).id);
+        } catch (err) {
+          // A bad book row (e.g. NULL name) must not roll back the whole transaction —
+          // that would silently drop every valid book and verse in the file. Any verse
+          // that references this book falls through to the "unknown source book id"
+          // branch in verseTx below, so it is skipped and reported too, never attached
+          // to the wrong book.
+          summary.skipped += 1;
+          summary.errors.push({
+            identifier: b.id != null ? `book ${b.id}` : `book row ${index}`,
+            reason: (err as Error).message,
+          });
+        }
+      });
     });
     bookTx(books);
 
@@ -75,6 +93,18 @@ export function importOpenlpBible(
         try {
           const bookId = bookIdBySourceId.get(v.book_id);
           if (bookId == null) throw new Error(`verse references unknown source book id ${v.book_id}`);
+          // SQLite's INTEGER affinity silently stores a non-numeric value (e.g. 'abc') as
+          // TEXT instead of rejecting it, so a malformed chapter/verse would otherwise
+          // import successfully, reach the search index, and never be reachable by
+          // getVersesForChapter's numeric lookup. NULL is left to the NOT NULL
+          // constraint below, which already reports it correctly.
+          const chapterInvalid = v.chapter !== null && !Number.isInteger(v.chapter);
+          const verseInvalid = v.verse !== null && !Number.isInteger(v.verse);
+          if (chapterInvalid || verseInvalid) {
+            throw new Error(
+              `verse has a non-numeric chapter or verse number (chapter=${JSON.stringify(v.chapter)}, verse=${JSON.stringify(v.verse)})`
+            );
+          }
           const existing = findVerse.get(bookId, v.chapter, v.verse) as
             | { id: number; text: string }
             | undefined;

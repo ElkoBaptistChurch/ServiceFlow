@@ -115,4 +115,23 @@ describe('importOpenlpSongs', () => {
     expect(summary.errors[0].identifier).toBe('Broken Song');
     expect(findSongsByTitle(mainDb, 'All Creatures')).toHaveLength(1);
   });
+
+  // Fix round 1 (minor, ride-along): a NULL lyrics cell must not surface a raw JS
+  // TypeError ("Cannot read properties of null...") to a non-technical volunteer
+  // reading the import summary.
+  it('reports a plain-language reason for a song with no lyrics data', () => {
+    const fixturePath = createFixtureSongsDb([
+      { title: 'No Lyrics Song', lyrics: null },
+      { title: 'All Creatures of our God and King', lyrics: ALL_CREATURES_XML },
+    ]);
+
+    const summary = importOpenlpSongs(mainDb, fixturePath);
+
+    expect(summary.imported).toBe(1);
+    expect(summary.skipped).toBe(1);
+    const badRow = summary.errors.find((e) => e.identifier === 'No Lyrics Song');
+    expect(badRow).toBeDefined();
+    expect(badRow!.reason).toBe('song has no lyrics data');
+    expect(badRow!.reason).not.toMatch(/cannot read properties/i);
+  });
 });

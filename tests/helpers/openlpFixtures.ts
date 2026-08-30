@@ -4,7 +4,11 @@ import os from 'os';
 import path from 'path';
 
 export function createFixtureSongsDb(
-  songs: { title: string; lyrics: string; ccliNumber?: string | null }[]
+  // lyrics is typed nullable so tests can reproduce a corrupted/legacy row whose
+  // lyrics cell is NULL. The real songs.sqlite schema marks this column NOT NULL,
+  // so this fixture intentionally omits that constraint to allow constructing the
+  // defensive-code test case even though today's real files can't produce it.
+  songs: { title: string; lyrics: string | null; ccliNumber?: string | null }[]
 ): string {
   const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-songs-')), 'songs.sqlite');
   const db = new Database(dbPath);
@@ -12,7 +16,7 @@ export function createFixtureSongsDb(
     CREATE TABLE songs (
       id INTEGER NOT NULL PRIMARY KEY,
       title VARCHAR(255) NOT NULL,
-      lyrics TEXT NOT NULL,
+      lyrics TEXT,
       ccli_number VARCHAR(64)
     );
   `);
@@ -26,8 +30,11 @@ export function createFixtureBibleDb(
   translationName: string,
   // bookReferenceId defaults to id, but tests MUST be able to set it independently:
   // in the real KJV file, book id 44 (Romans) carries book_reference_id 45.
-  books: { id: number; name: string; testamentReferenceId: number; bookReferenceId?: number }[],
-  verses: { bookId: number; chapter: number; verse: number; text: string }[]
+  // name is nullable and chapter/verse also accept a string so tests can reproduce
+  // real malformed-row shapes: a NULL book name, and a chapter/verse value SQLite's
+  // loose INTEGER affinity stored as TEXT because it wasn't numeric to begin with.
+  books: { id: number; name: string | null; testamentReferenceId: number; bookReferenceId?: number }[],
+  verses: { bookId: number; chapter: number | string; verse: number | string; text: string }[]
 ): string {
   const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-bible-')), 'bible.sqlite');
   const db = new Database(dbPath);

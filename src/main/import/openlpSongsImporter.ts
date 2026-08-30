@@ -39,6 +39,12 @@ export function importOpenlpSongs(
     const tx = mainDb.transaction((songRows: any[]) => {
       for (const row of songRows) {
         try {
+          if (row.lyrics == null) {
+            // Without this check, parseSongLyrics(null) throws a raw
+            // "Cannot read properties of null" TypeError, which is meaningless to
+            // the church volunteer reading the import summary.
+            throw new Error('song has no lyrics data');
+          }
           const blocks = parseSongLyrics(row.lyrics);
           if (blocks.length === 0) {
             throw new Error('lyrics XML contained no verse blocks');
