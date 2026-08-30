@@ -3,7 +3,9 @@
  * because 109 of the church's 556 songs use `'` and an operator types `'`.
  */
 export function normalizeForSearch(raw: string): string {
-  return raw.replace(/[''ʼ]/g, "'").replace(/[""]/g, '"');
+  // Written with \uXXXX escapes (never literal curly-quote characters) so a
+  // future transcription/encoding mishap cannot silently mangle this class again.
+  return raw.replace(/[\u2018\u2019\u02BC]/g, "'").replace(/[\u201C\u201D]/g, '"');
 }
 
 export function toFtsQuery(raw: string): string {

@@ -18,7 +18,7 @@ beforeEach(() => {
     ['Verse 1', 'Amazing grace, how sweet the sound', 0],
     ["Chorus 1", "My chains are gone, I've been set free", 1],
     // 109 of the church's songs use a typographic apostrophe like this one.
-    ["Verse 2", "In a believer's ear!", 2],
+    ["Verse 2", "In a believer\u2019s ear!", 2],
   ] as const;
   for (const [label, text, order] of blocks) {
     const info = insertBlock.run(1, label, text, order);

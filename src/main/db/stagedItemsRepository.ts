@@ -26,7 +26,7 @@ function rowToStagedItem(db: Database.Database, row: any): StagedItem {
 }
 
 export function getStagedItems(db: Database.Database): StagedItem[] {
-  const rows = db.prepare(`SELECT * FROM staged_items ORDER BY position`).all();
+  const rows = db.prepare(`SELECT * FROM staged_items ORDER BY position, id`).all();
   return rows.map((r) => rowToStagedItem(db, r));
 }
 
@@ -45,8 +45,21 @@ export function removeStagedItem(db: Database.Database, id: number): void {
 
 export function reorderStagedItems(db: Database.Database, orderedIds: number[]): void {
   const update = db.prepare(`UPDATE staged_items SET position = ? WHERE id = ?`);
+  const selectCurrent = db.prepare(`SELECT id FROM staged_items ORDER BY position, id`);
+
   const tx = db.transaction((ids: number[]) => {
-    ids.forEach((id, index) => update.run(index, id));
+    const currentIds = (selectCurrent.all() as { id: number }[]).map((r) => r.id);
+    const currentIdSet = new Set(currentIds);
+
+    // Only ids that actually exist, in the order the caller supplied them.
+    const supplied = ids.filter((id) => currentIdSet.has(id));
+    const suppliedSet = new Set(supplied);
+
+    // Anything the caller omitted keeps its existing relative order, appended after.
+    const omitted = currentIds.filter((id) => !suppliedSet.has(id));
+
+    const combined = [...supplied, ...omitted];
+    combined.forEach((id, index) => update.run(index, id));
   });
   tx(orderedIds);
 }
