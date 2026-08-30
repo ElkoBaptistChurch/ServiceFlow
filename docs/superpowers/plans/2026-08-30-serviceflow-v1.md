@@ -15,13 +15,46 @@
 - Target platform is Windows only (v1). No macOS/Linux packaging.
 - The embedded server binds `0.0.0.0` (not `localhost`) so OBS can run on a separate LAN machine.
 - No preview/live separation — every click/arrow-key move on a verse or song block updates live state immediately.
-- No clear/blank-output control in v1 — the output always shows the last live item.
-- Songs show each unique verse/chorus/bridge block once, in first-appearance (XML document) order — OpenLP's `verse_order` field is intentionally ignored.
+- Songs show each block once, in XML document order — OpenLP's `verse_order` field is intentionally ignored.
 - Single verse per live update — no multi-verse ranges in v1.
 - No in-app song editor in v1 — songs and Bible text come only from the OpenLP importer.
 - OpenLP source files (the church's `songs.sqlite` / translation `.sqlite` files) are user data, never committed to the repo — `.gitignore` must exclude them.
-- The real OpenLP schemas this plan is built against were inspected directly from the church's actual files at `openlp/songs.sqlite` and `openlp/KJV.sqlite` in this repo (untracked) — see Task 5 for the exact column names relied upon.
-- Deviation from the spec's error-handling wording: the spec says a port-bind failure should offer "a way to change the port in Settings." Task 8 instead auto-falls-back to an OS-assigned free port and always shows the real current URL in Settings — no manual port field exists in v1. This resolves the same failure mode without adding a settings field purely for an edge case; revisit only if a church's firewall setup specifically needs a fixed, predictable port.
+- Deviation from the spec's error-handling wording: the spec says a port-bind failure should offer "a way to change the port in Settings." Task 8 instead auto-falls-back to an OS-assigned free port and always shows the real current URL in Settings — no manual port field exists in v1. All user-facing copy must match that behaviour (never tell the operator to change a port that has no UI).
+
+### Non-negotiable facts about the real OpenLP data
+
+Measured directly from the church's untracked files in `openlp/`. Getting any of
+these wrong ships wrong scripture to a live congregation, so each has a dedicated
+regression test in Task 5.
+
+- **Source `book.id` is not stable across translation files.** `KJV.sqlite` has
+  `id=44` → Romans and `id=45` → Acts; NET and NKJV have those swapped. Books are
+  therefore keyed by `(translation, source_book_id)` and verses hang off ServiceFlow's
+  own surrogate `bible_books.id`. Never key a book by the source ID alone.
+- **`book.id` is not display order.** Use `book_reference_id` for `sort_order`. It is
+  not unique either (KJV maps `15` to both Ezra and Esdras), so it sorts but never keys.
+- **Song `(type, label)` pairs repeat.** "How Sweet the name of Jesus Sounds" has six
+  `<verse>` elements and only three distinct `(type, label)` pairs. Blocks are keyed by
+  `display_order`, never by label.
+- **`verse type` is not always one letter.** Across 556 songs: `v`×2136, `c`×6,
+  `Verse`×95, `Chorus`×21, `Ending`×1.
+- **KJV carries 12 apocryphal books** (source IDs 67-78, `testament_reference_id`=3)
+  and a verse numbered 0 (Sirach 1:0, 3,133 chars). NET/NKJV have 66 books.
+- **279 canonical KJV verses exceed 300 characters** (longest: Esther 8:9, 534). The
+  output page must fit text to the frame.
+- **109 songs use typographic apostrophes (`’`)**, so search text is normalized before
+  it reaches FTS.
+
+### Scope decisions made during PM review
+
+- **Blank-output control is in v1.** `live_state.hidden` plus a toggle (button + `Esc`).
+  The operator needs something to do during prayer and announcements.
+- **Translation picker is in v1.** All three translation files import; Settings holds the
+  active one in `app_settings`; the renderer never hardcodes `'KJV'`.
+- **The Windows installer is built on Windows.** `better-sqlite3` is a native module and
+  `@electron/rebuild` cannot cross-compile it from this WSL machine — see Task 12.
+- **Electron cannot open a window under WSL without WSLg/X.** Steps that say "confirm the
+  app boots" need a real desktop session; run them on the Windows PC if WSLg is absent.
 
 ---
 
@@ -324,7 +357,7 @@ git commit -m "chore: scaffold Electron + React + TypeScript + Vitest project"
 - Test: `tests/unit/db/schema.test.ts`
 
 **Interfaces:**
-- Produces: `BibleBook`, `BibleVerse`, `BibleSearchResult`, `Song`, `SongBlock`, `SongSearchResult`, `StagedItemType`, `StagedItem`, `LiveState`, `ContentType`, `OutputStyle`, `OutputPayload`, `ImportSummary`, `Testament` (all in `src/shared/types.ts`) — every later task imports these instead of redefining them.
+- Produces: `BibleBook`, `BibleVerse`, `BibleSearchResult`, `Song`, `SongBlock`, `SongSearchResult`, `StagedItemType`, `StagedItem`, `LiveState`, `ContentType`, `OutputStyle`, `OutputPayload`, `ImportError`, `ImportSourceSummary`, `ImportSummary`, `Testament` (all in `src/shared/types.ts`) — every later task imports these instead of redefining them.
 - Produces: `applySchema(db: Database.Database): void` and `openDatabase(path: string): Database.Database` from `src/main/db/schema.ts` / `client.ts`.
 
 - [ ] **Step 1: Write the failing schema test**
@@ -355,6 +388,7 @@ describe('applySchema', () => {
       'staged_items',
       'live_state',
       'output_styles',
+      'app_settings',
     ]) {
       expect(names).toContain(expected);
     }
@@ -379,11 +413,11 @@ describe('applySchema', () => {
     const db = new Database(':memory:');
     applySchema(db);
     db.prepare(
-      `INSERT INTO bible_books (id, name, testament, sort_order) VALUES (1, 'Genesis', 'OT', 1)`
+      `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (1, 'KJV', 1, 'Genesis', 'OT', 1)`
     ).run();
     const info = db
       .prepare(
-        `INSERT INTO bible_verses (book_id, chapter, verse, text, translation) VALUES (1, 1, 1, 'In the beginning God created the heaven and the earth.', 'KJV')`
+        `INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (1, 1, 1, 'In the beginning God created the heaven and the earth.')`
       )
       .run();
     db.prepare(`INSERT INTO bible_verses_fts (rowid, text) VALUES (?, ?)`).run(
@@ -396,6 +430,33 @@ describe('applySchema', () => {
       )
       .all();
     expect(results).toHaveLength(1);
+  });
+
+  // Regression guard for the real-data fact that KJV's source book 44 is Romans
+  // while NET's source book 44 is Acts. Two translations must be able to disagree.
+  it('lets two translations reuse the same source_book_id for different books', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const insert = db.prepare(
+      `INSERT INTO bible_books (translation, source_book_id, name, testament, sort_order) VALUES (?, ?, ?, 'NT', ?)`
+    );
+    expect(() => {
+      insert.run('KJV', 44, 'Romans', 45);
+      insert.run('NET', 44, 'Acts', 44);
+    }).not.toThrow();
+    expect(() => insert.run('KJV', 44, 'Romans', 45)).toThrow();
+  });
+
+  it('keys song blocks by display_order so a repeated label is not lost', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.prepare(`INSERT INTO songs (id, title) VALUES (1, 'How Sweet the name of Jesus Sounds')`).run();
+    const insert = db.prepare(
+      `INSERT INTO song_blocks (song_id, label, text, display_order) VALUES (1, 'Verse 1', ?, ?)`
+    );
+    insert.run('How sweet the name of Jesus sounds', 0);
+    insert.run('It makes the wounded spirit whole', 1);
+    expect(db.prepare(`SELECT COUNT(*) as c FROM song_blocks`).get()).toEqual({ c: 2 });
   });
 });
 ```
@@ -413,7 +474,12 @@ export type Testament = 'OT' | 'NT' | 'AP';
 export type StagedItemType = ContentType;
 
 export interface BibleBook {
+  /** ServiceFlow's own surrogate id. Unique across translations. */
   id: number;
+  /** Translation code from the source file's metadata, e.g. 'KJV'. */
+  translation: string;
+  /** The id this book had in its OpenLP source file. Only unique within a translation. */
+  sourceBookId: number;
   name: string;
   testament: Testament;
   sortOrder: number;
@@ -421,16 +487,17 @@ export interface BibleBook {
 
 export interface BibleVerse {
   id: number;
+  /** References BibleBook.id, which already implies the translation. */
   bookId: number;
   chapter: number;
   verse: number;
   text: string;
-  translation: string;
 }
 
 export interface BibleSearchResult {
   verse: BibleVerse;
   bookName: string;
+  translation: string;
 }
 
 export interface Song {
@@ -465,7 +532,11 @@ export interface LiveState {
   stagedItemId: number | null;
   verseOrBlockId: number | null;
   styleId: number | null;
+  /** True while the operator has blanked the output; the selection is preserved. */
+  hidden: boolean;
   updatedAt: string;
+  /** Human-readable current reference, e.g. 'John 3:16'. Null when nothing is live. */
+  reference: string | null;
 }
 
 export interface OutputStyle {
@@ -483,12 +554,32 @@ export interface OutputPayload {
   reference: string | null;
   styleId: number | null;
   templateKey: string | null;
+  /** True when the operator has blanked the output. The page renders nothing. */
+  hidden: boolean;
+}
+
+export interface ImportError {
+  identifier: string;
+  reason: string;
+}
+
+/** One imported file. The operator needs per-file counts, not one merged number. */
+export interface ImportSourceSummary {
+  /** Basename of the file the operator picked. */
+  file: string;
+  kind: 'songs' | 'bible';
+  /** Translation code, for bible sources only. */
+  translation?: string;
+  imported: number;
+  skipped: number;
+  errors: ImportError[];
 }
 
 export interface ImportSummary {
+  sources: ImportSourceSummary[];
   imported: number;
   skipped: number;
-  errors: { identifier: string; reason: string }[];
+  errors: ImportError[];
 }
 ```
 
@@ -498,23 +589,30 @@ export interface ImportSummary {
 import Database from 'better-sqlite3';
 
 const SCHEMA_SQL = `
+-- Books are keyed by (translation, source_book_id) because OpenLP's own book ids
+-- are NOT stable across translation files: KJV's 44 is Romans, NET's 44 is Acts.
+-- Everything downstream references this table's surrogate id, so a verse can
+-- never be captioned with another translation's book name.
 CREATE TABLE IF NOT EXISTS bible_books (
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  translation TEXT NOT NULL,
+  source_book_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   testament TEXT NOT NULL CHECK (testament IN ('OT','NT','AP')),
-  sort_order INTEGER NOT NULL
+  sort_order INTEGER NOT NULL,
+  UNIQUE(translation, source_book_id)
 );
+CREATE INDEX IF NOT EXISTS idx_bible_books_translation ON bible_books(translation, sort_order);
 
 CREATE TABLE IF NOT EXISTS bible_verses (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  book_id INTEGER NOT NULL REFERENCES bible_books(id),
+  book_id INTEGER NOT NULL REFERENCES bible_books(id) ON DELETE CASCADE,
   chapter INTEGER NOT NULL,
   verse INTEGER NOT NULL,
   text TEXT NOT NULL,
-  translation TEXT NOT NULL,
-  UNIQUE(book_id, chapter, verse, translation)
+  UNIQUE(book_id, chapter, verse)
 );
-CREATE INDEX IF NOT EXISTS idx_bible_verses_lookup ON bible_verses(book_id, chapter, translation);
+CREATE INDEX IF NOT EXISTS idx_bible_verses_lookup ON bible_verses(book_id, chapter);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS bible_verses_fts USING fts5(
   text, content='bible_verses', content_rowid='id', tokenize='porter'
@@ -526,13 +624,16 @@ CREATE TABLE IF NOT EXISTS songs (
   ccli_number TEXT
 );
 
+-- Keyed by display_order, NOT by label: real songs repeat a (type, label) pair
+-- ("How Sweet the name of Jesus Sounds" has six blocks and three distinct labels),
+-- and keying on the label silently drops half the hymn.
 CREATE TABLE IF NOT EXISTS song_blocks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  song_id INTEGER NOT NULL REFERENCES songs(id),
+  song_id INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
   label TEXT NOT NULL,
   text TEXT NOT NULL,
   display_order INTEGER NOT NULL,
-  UNIQUE(song_id, label)
+  UNIQUE(song_id, display_order)
 );
 CREATE INDEX IF NOT EXISTS idx_song_blocks_song ON song_blocks(song_id, display_order);
 
@@ -553,7 +654,13 @@ CREATE TABLE IF NOT EXISTS live_state (
   staged_item_id INTEGER,
   verse_or_block_id INTEGER,
   style_id INTEGER,
+  hidden INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS output_styles (
@@ -576,7 +683,7 @@ export function applySchema(db: Database.Database): void {
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run tests/unit/db/schema.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 6: Write `src/main/db/client.ts`**
 
@@ -615,7 +722,8 @@ git commit -m "feat: add shared types and SQLite schema/client"
 
 **Interfaces:**
 - Consumes: `applySchema` (Task 2), `BibleBook`/`BibleVerse`/`BibleSearchResult`/`Song`/`SongBlock`/`SongSearchResult` (Task 2).
-- Produces: `toFtsQuery(raw: string): string`; `findBooksByName`, `getChaptersForBook`, `getVersesForChapter`, `searchBibleContent` from `bibleRepository.ts`; `findSongsByTitle`, `getBlocksForSong`, `searchSongContent` from `songRepository.ts` — these are what the IPC handlers (Task 8) and the importers (Task 5, read-side of the resulting data) rely on.
+- Produces: `toFtsQuery(raw: string): string` and `normalizeForSearch(raw: string): string`; `listTranslations`, `findBooksByName`, `getChaptersForBook`, `getVersesForChapter`, `searchBibleContent` from `bibleRepository.ts`; `findSongsByTitle`, `getBlocksForSong`, `searchSongContent` from `songRepository.ts` — these are what the IPC handlers (Task 8) and the importers (Task 5, read-side of the resulting data) rely on.
+- Note: every Bible read takes ServiceFlow's own `bible_books.id`, never a source book id, and only `findBooksByName`/`searchBibleContent` take a translation. This is what makes it structurally impossible to render one translation's verse under another's book name.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -630,55 +738,89 @@ import {
   getChaptersForBook,
   getVersesForChapter,
   searchBibleContent,
+  listTranslations,
 } from '../../../src/main/db/bibleRepository';
+import { normalizeForSearch } from '../../../src/main/db/fts';
 
 let db: Database.Database;
 
 beforeEach(() => {
   db = new Database(':memory:');
   applySchema(db);
-  db.prepare(`INSERT INTO bible_books (id, name, testament, sort_order) VALUES (1, 'John', 'NT', 43)`).run();
-  db.prepare(`INSERT INTO bible_books (id, name, testament, sort_order) VALUES (2, 'Genesis', 'OT', 1)`).run();
-
-  const insertVerse = db.prepare(
-    `INSERT INTO bible_verses (book_id, chapter, verse, text, translation) VALUES (?, ?, ?, ?, ?)`
+  // Deliberately mirrors the real files: KJV's source book 44 is Romans while
+  // NET's source book 44 is Acts. Any regression here mislabels scripture on air.
+  const insertBook = db.prepare(
+    `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (?, ?, ?, ?, ?, ?)`
   );
+  insertBook.run(1, 'KJV', 43, 'John', 'NT', 43);
+  insertBook.run(2, 'KJV', 1, 'Genesis', 'OT', 1);
+  insertBook.run(3, 'KJV', 44, 'Romans', 'NT', 45);
+  insertBook.run(4, 'NET', 44, 'Acts', 'NT', 44);
+
+  const insertVerse = db.prepare(`INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (?, ?, ?, ?)`);
   const insertFts = db.prepare(`INSERT INTO bible_verses_fts (rowid, text) VALUES (?, ?)`);
   const rows = [
     [1, 3, 16, 'For God so loved the world, that he gave his only begotten Son.'],
     [1, 3, 17, 'For God sent not his Son into the world to condemn the world.'],
     [1, 1, 1, 'In the beginning was the Word.'],
+    [3, 1, 1, 'Paul, a servant of Jesus Christ, called to be an apostle.'],
+    [4, 1, 1, 'I wrote the former account, Theophilus.'],
   ] as const;
   for (const [bookId, chapter, verse, text] of rows) {
-    const info = insertVerse.run(bookId, chapter, verse, text, 'KJV');
-    insertFts.run(info.lastInsertRowid, text);
+    const info = insertVerse.run(bookId, chapter, verse, text);
+    insertFts.run(info.lastInsertRowid, normalizeForSearch(text));
   }
 });
 
 describe('bibleRepository', () => {
-  it('finds books by partial name', () => {
-    expect(findBooksByName(db, 'joh').map((b) => b.name)).toEqual(['John']);
+  it('finds books by partial name within the active translation', () => {
+    expect(findBooksByName(db, 'joh', 'KJV').map((b) => b.name)).toEqual(['John']);
+  });
+
+  it('does not leak books from another translation', () => {
+    expect(findBooksByName(db, 'acts', 'KJV')).toEqual([]);
+    expect(findBooksByName(db, 'acts', 'NET').map((b) => b.name)).toEqual(['Acts']);
+  });
+
+  it('keeps two translations that reuse a source book id apart', () => {
+    const romans = findBooksByName(db, 'romans', 'KJV')[0];
+    const acts = findBooksByName(db, 'acts', 'NET')[0];
+    expect(romans.sourceBookId).toBe(44);
+    expect(acts.sourceBookId).toBe(44);
+    expect(getVersesForChapter(db, romans.id, 1)[0].text).toContain('Paul, a servant');
+    expect(getVersesForChapter(db, acts.id, 1)[0].text).toContain('Theophilus');
+  });
+
+  it('orders books by sort_order, not by source book id', () => {
+    expect(findBooksByName(db, '', 'KJV').map((b) => b.name)).toEqual(['Genesis', 'John', 'Romans']);
   });
 
   it('lists distinct chapters for a book', () => {
-    expect(getChaptersForBook(db, 1, 'KJV')).toEqual([1, 3]);
+    const john = findBooksByName(db, 'john', 'KJV')[0];
+    expect(getChaptersForBook(db, john.id)).toEqual([1, 3]);
   });
 
   it('lists verses for a chapter in verse order', () => {
-    const verses = getVersesForChapter(db, 1, 3, 'KJV');
+    const john = findBooksByName(db, 'john', 'KJV')[0];
+    const verses = getVersesForChapter(db, john.id, 3);
     expect(verses.map((v) => v.verse)).toEqual([16, 17]);
     expect(verses[0].text).toContain('loved the world');
   });
 
-  it('finds verses by content search', () => {
+  it('finds verses by content search, scoped to the translation', () => {
     const results = searchBibleContent(db, 'begotten', 'KJV');
     expect(results).toHaveLength(1);
     expect(results[0].bookName).toBe('John');
     expect(results[0].verse.verse).toBe(16);
+    expect(searchBibleContent(db, 'begotten', 'NET')).toHaveLength(0);
   });
 
   it('does not throw on punctuation in the search query', () => {
     expect(() => searchBibleContent(db, 'God\'s "love"!', 'KJV')).not.toThrow();
+  });
+
+  it('lists the imported translations', () => {
+    expect(listTranslations(db)).toEqual(['KJV', 'NET']);
   });
 });
 ```
@@ -690,6 +832,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { applySchema } from '../../../src/main/db/schema';
 import { findSongsByTitle, getBlocksForSong, searchSongContent } from '../../../src/main/db/songRepository';
+import { normalizeForSearch } from '../../../src/main/db/fts';
 
 let db: Database.Database;
 
@@ -704,10 +847,12 @@ beforeEach(() => {
   const blocks = [
     ['Verse 1', 'Amazing grace, how sweet the sound', 0],
     ['Chorus 1', 'My chains are gone, I\'ve been set free', 1],
+    // 109 of the church's songs use a typographic apostrophe like this one.
+    ['Verse 2', 'In a believer’s ear!', 2],
   ] as const;
   for (const [label, text, order] of blocks) {
     const info = insertBlock.run(1, label, text, order);
-    insertFts.run(info.lastInsertRowid, text);
+    insertFts.run(info.lastInsertRowid, normalizeForSearch(text));
   }
 });
 
@@ -718,7 +863,7 @@ describe('songRepository', () => {
 
   it('lists blocks for a song in display order', () => {
     const blocks = getBlocksForSong(db, 1);
-    expect(blocks.map((b) => b.label)).toEqual(['Verse 1', 'Chorus 1']);
+    expect(blocks.map((b) => b.label)).toEqual(['Verse 1', 'Chorus 1', 'Verse 2']);
   });
 
   it('finds blocks by content search', () => {
@@ -726,6 +871,12 @@ describe('songRepository', () => {
     expect(results).toHaveLength(1);
     expect(results[0].songTitle).toBe('Amazing Grace');
     expect(results[0].block.label).toBe('Chorus 1');
+  });
+
+  it('matches lyrics written with a typographic apostrophe from an ASCII query', () => {
+    const results = searchSongContent(db, "believer's");
+    expect(results).toHaveLength(1);
+    expect(results[0].block.label).toBe('Verse 2');
   });
 });
 ```
@@ -738,8 +889,16 @@ Expected: FAIL — modules not found.
 - [ ] **Step 3: Write `src/main/db/fts.ts`**
 
 ```ts
+/**
+ * Folds typographic punctuation to ASCII. Applied to BOTH indexed text and queries,
+ * because 109 of the church's 556 songs use `’` and an operator types `'`.
+ */
+export function normalizeForSearch(raw: string): string {
+  return raw.replace(/[‘’ʼ]/g, "'").replace(/[“”]/g, '"');
+}
+
 export function toFtsQuery(raw: string): string {
-  const tokens = raw
+  const tokens = normalizeForSearch(raw)
     .split(/\s+/)
     .map((t) => t.replace(/"/g, '').trim())
     .filter(Boolean)
@@ -756,47 +915,63 @@ import { BibleBook, BibleSearchResult, BibleVerse, Testament } from '../../share
 import { toFtsQuery } from './fts';
 
 function rowToBook(row: any): BibleBook {
-  return { id: row.id, name: row.name, testament: row.testament as Testament, sortOrder: row.sort_order };
+  return {
+    id: row.id,
+    translation: row.translation,
+    sourceBookId: row.source_book_id,
+    name: row.name,
+    testament: row.testament as Testament,
+    sortOrder: row.sort_order,
+  };
 }
 
 function rowToVerse(row: any): BibleVerse {
-  return { id: row.id, bookId: row.book_id, chapter: row.chapter, verse: row.verse, text: row.text, translation: row.translation };
+  return { id: row.id, bookId: row.book_id, chapter: row.chapter, verse: row.verse, text: row.text };
 }
 
-export function findBooksByName(db: Database.Database, query: string): BibleBook[] {
+export function listTranslations(db: Database.Database): string[] {
   const rows = db
-    .prepare(`SELECT * FROM bible_books WHERE name LIKE ? ORDER BY sort_order LIMIT 20`)
-    .all(`%${query}%`);
+    .prepare(`SELECT DISTINCT translation FROM bible_books ORDER BY translation`)
+    .all() as { translation: string }[];
+  return rows.map((r) => r.translation);
+}
+
+export function findBooksByName(db: Database.Database, query: string, translation: string): BibleBook[] {
+  const rows = db
+    .prepare(`SELECT * FROM bible_books WHERE translation = ? AND name LIKE ? ORDER BY sort_order LIMIT 20`)
+    .all(translation, `%${query}%`);
   return rows.map(rowToBook);
 }
 
-export function getChaptersForBook(db: Database.Database, bookId: number, translation: string): number[] {
+// bookId is always ServiceFlow's own bible_books.id, which already carries the
+// translation — so no query below can mix two translations by accident.
+export function getChaptersForBook(db: Database.Database, bookId: number): number[] {
   const rows = db
-    .prepare(`SELECT DISTINCT chapter FROM bible_verses WHERE book_id = ? AND translation = ? ORDER BY chapter`)
-    .all(bookId, translation) as { chapter: number }[];
+    .prepare(`SELECT DISTINCT chapter FROM bible_verses WHERE book_id = ? ORDER BY chapter`)
+    .all(bookId) as { chapter: number }[];
   return rows.map((r) => r.chapter);
 }
 
-export function getVersesForChapter(db: Database.Database, bookId: number, chapter: number, translation: string): BibleVerse[] {
+export function getVersesForChapter(db: Database.Database, bookId: number, chapter: number): BibleVerse[] {
   const rows = db
-    .prepare(`SELECT * FROM bible_verses WHERE book_id = ? AND chapter = ? AND translation = ? ORDER BY verse`)
-    .all(bookId, chapter, translation);
+    .prepare(`SELECT * FROM bible_verses WHERE book_id = ? AND chapter = ? ORDER BY verse`)
+    .all(bookId, chapter);
   return rows.map(rowToVerse);
 }
 
 export function searchBibleContent(db: Database.Database, query: string, translation: string, limit = 25): BibleSearchResult[] {
   const rows = db
     .prepare(
-      `SELECT bv.*, bb.name as book_name
+      `SELECT bv.*, bb.name as book_name, bb.translation as translation
        FROM bible_verses_fts
        JOIN bible_verses bv ON bv.id = bible_verses_fts.rowid
        JOIN bible_books bb ON bb.id = bv.book_id
-       WHERE bible_verses_fts MATCH ? AND bv.translation = ?
+       WHERE bible_verses_fts MATCH ? AND bb.translation = ?
        ORDER BY rank
        LIMIT ?`
     )
     .all(toFtsQuery(query), translation, limit) as any[];
-  return rows.map((r) => ({ verse: rowToVerse(r), bookName: r.book_name }));
+  return rows.map((r) => ({ verse: rowToVerse(r), bookName: r.book_name, translation: r.translation }));
 }
 ```
 
@@ -844,7 +1019,7 @@ export function searchSongContent(db: Database.Database, query: string, limit = 
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/unit/db/bibleRepository.test.ts tests/unit/db/songRepository.test.ts`
-Expected: PASS (9 tests).
+Expected: PASS (13 tests).
 
 - [ ] **Step 7: Typecheck and commit**
 
@@ -863,13 +1038,14 @@ git commit -m "feat: add bible and song content repositories with FTS5 search"
 - Create: `src/main/db/stagedItemsRepository.ts`
 - Create: `src/main/db/liveStateRepository.ts`
 - Create: `src/main/db/outputStylesRepository.ts`
+- Create: `src/main/db/settingsRepository.ts`
 - Test: `tests/unit/db/stagedItemsRepository.test.ts`
 - Test: `tests/unit/db/liveStateRepository.test.ts`
 - Test: `tests/unit/db/outputStylesRepository.test.ts`
 
 **Interfaces:**
 - Consumes: `bible_books`/`songs` tables and `applySchema` (Task 2); `StagedItem`, `LiveState`, `OutputStyle`, `ContentType` types (Task 2).
-- Produces: `getStagedItems`, `addStagedItem`, `removeStagedItem`, `reorderStagedItems` (staged items); `getLiveState`, `setLiveState` (live state); `getStyles`, `getActiveStyle`, `setActiveStyle`, `seedDefaultOutputStyles` (styles) — all consumed by the IPC handlers in Task 8, and `seedDefaultOutputStyles` also called from `main/index.ts` on startup.
+- Produces: `getStagedItems`, `addStagedItem`, `removeStagedItem`, `reorderStagedItems` (staged items); `getLiveState`, `setLiveState`, `setOutputHidden`, `clearLiveState`, `describeLiveReference` (live state); `getStyles`, `getActiveStyle`, `setActiveStyle`, `seedDefaultOutputStyles` (styles); `getSetting`, `setSetting` (app settings) — all consumed by the IPC handlers in Task 8, and `seedDefaultOutputStyles` also called from `main/index.ts` on startup.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -891,14 +1067,16 @@ let db: Database.Database;
 beforeEach(() => {
   db = new Database(':memory:');
   applySchema(db);
-  db.prepare(`INSERT INTO bible_books (id, name, testament, sort_order) VALUES (1, 'John', 'NT', 43)`).run();
+  db.prepare(
+    `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (1, 'KJV', 43, 'John', 'NT', 43)`
+  ).run();
   db.prepare(`INSERT INTO songs (id, title) VALUES (1, 'Amazing Grace')`).run();
 });
 
 describe('stagedItemsRepository', () => {
-  it('stages a bible chapter with a human-readable label', () => {
+  it('stages a bible chapter with a human-readable label naming the translation', () => {
     const item = addStagedItem(db, 'bible', 1, 3);
-    expect(item.label).toBe('John 3');
+    expect(item.label).toBe('John 3 (KJV)');
     expect(item.position).toBe(0);
   });
 
@@ -936,13 +1114,30 @@ describe('stagedItemsRepository', () => {
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { applySchema } from '../../../src/main/db/schema';
-import { getLiveState, setLiveState } from '../../../src/main/db/liveStateRepository';
+import {
+  clearLiveState,
+  getLiveState,
+  setLiveState,
+  setOutputHidden,
+} from '../../../src/main/db/liveStateRepository';
+import { addStagedItem } from '../../../src/main/db/stagedItemsRepository';
 
 let db: Database.Database;
+let stagedItemId: number;
+let verseId: number;
 
 beforeEach(() => {
   db = new Database(':memory:');
   applySchema(db);
+  db.prepare(
+    `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (1, 'KJV', 43, 'John', 'NT', 43)`
+  ).run();
+  verseId = Number(
+    db
+      .prepare(`INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (1, 3, 16, 'For God so loved the world.')`)
+      .run().lastInsertRowid
+  );
+  stagedItemId = addStagedItem(db, 'bible', 1, 3).id;
 });
 
 describe('liveStateRepository', () => {
@@ -950,14 +1145,41 @@ describe('liveStateRepository', () => {
     const state = getLiveState(db);
     expect(state.stagedItemId).toBeNull();
     expect(state.verseOrBlockId).toBeNull();
+    expect(state.hidden).toBe(false);
+    expect(state.reference).toBeNull();
   });
 
   it('sets and reads back live state', () => {
-    const updated = setLiveState(db, 5, 42, 1);
-    expect(updated.stagedItemId).toBe(5);
-    expect(updated.verseOrBlockId).toBe(42);
+    const updated = setLiveState(db, stagedItemId, verseId, 1);
+    expect(updated.stagedItemId).toBe(stagedItemId);
+    expect(updated.verseOrBlockId).toBe(verseId);
     expect(updated.styleId).toBe(1);
     expect(getLiveState(db)).toEqual(updated);
+  });
+
+  // The operator banner must never show internal ids — that is the whole point of it.
+  it('exposes a human-readable reference for what is live', () => {
+    expect(setLiveState(db, stagedItemId, verseId, null).reference).toBe('John 3:16');
+  });
+
+  it('blanks and restores the output without losing the selection', () => {
+    setLiveState(db, stagedItemId, verseId, null);
+    const hidden = setOutputHidden(db, true);
+    expect(hidden.hidden).toBe(true);
+    expect(hidden.verseOrBlockId).toBe(verseId);
+    expect(setOutputHidden(db, false).hidden).toBe(false);
+  });
+
+  it('un-blanks automatically when a new item is put live', () => {
+    setOutputHidden(db, true);
+    expect(setLiveState(db, stagedItemId, verseId, null).hidden).toBe(false);
+  });
+
+  it('clears live state when the live staged item goes away', () => {
+    setLiveState(db, stagedItemId, verseId, null);
+    const cleared = clearLiveState(db);
+    expect(cleared.stagedItemId).toBeNull();
+    expect(cleared.reference).toBeNull();
   });
 });
 ```
@@ -1022,8 +1244,12 @@ import { StagedItem, StagedItemType } from '../../shared/types';
 
 function labelFor(db: Database.Database, type: StagedItemType, refId: number, chapter: number | null): string {
   if (type === 'bible') {
-    const book = db.prepare(`SELECT name FROM bible_books WHERE id = ?`).get(refId) as { name: string } | undefined;
-    return book ? `${book.name} ${chapter}` : `Unknown ${chapter}`;
+    // refId is a bible_books.id, so the translation comes along for free — and showing
+    // it makes a wrong-translation mistake visible before it reaches the stream.
+    const book = db.prepare(`SELECT name, translation FROM bible_books WHERE id = ?`).get(refId) as
+      | { name: string; translation: string }
+      | undefined;
+    return book ? `${book.name} ${chapter} (${book.translation})` : `Unknown ${chapter}`;
   }
   const song = db.prepare(`SELECT title FROM songs WHERE id = ?`).get(refId) as { title: string } | undefined;
   return song ? song.title : 'Unknown Song';
@@ -1073,18 +1299,49 @@ export function reorderStagedItems(db: Database.Database, orderedIds: number[]):
 import Database from 'better-sqlite3';
 import { LiveState } from '../../shared/types';
 
-function rowToLiveState(row: any): LiveState {
+/**
+ * The single place that turns (staged item, verse/block) into words a human reads.
+ * The operator banner, the OBS payload and the tests all go through here, so the
+ * UI can never drift into showing raw row ids.
+ */
+export function describeLiveReference(
+  db: Database.Database,
+  stagedItemId: number | null,
+  verseOrBlockId: number | null
+): string | null {
+  if (stagedItemId == null || verseOrBlockId == null) return null;
+  const item = db.prepare(`SELECT type FROM staged_items WHERE id = ?`).get(stagedItemId) as
+    | { type: string }
+    | undefined;
+  if (!item) return null;
+  if (item.type === 'bible') {
+    const row = db
+      .prepare(
+        `SELECT bb.name, bv.chapter, bv.verse FROM bible_verses bv JOIN bible_books bb ON bb.id = bv.book_id WHERE bv.id = ?`
+      )
+      .get(verseOrBlockId) as { name: string; chapter: number; verse: number } | undefined;
+    return row ? `${row.name} ${row.chapter}:${row.verse}` : null;
+  }
+  const row = db
+    .prepare(`SELECT s.title, sb.label FROM song_blocks sb JOIN songs s ON s.id = sb.song_id WHERE sb.id = ?`)
+    .get(verseOrBlockId) as { title: string; label: string } | undefined;
+  return row ? `${row.title} — ${row.label}` : null;
+}
+
+function rowToLiveState(db: Database.Database, row: any): LiveState {
   return {
     stagedItemId: row.staged_item_id,
     verseOrBlockId: row.verse_or_block_id,
     styleId: row.style_id,
+    hidden: !!row.hidden,
     updatedAt: row.updated_at,
+    reference: describeLiveReference(db, row.staged_item_id, row.verse_or_block_id),
   };
 }
 
 export function getLiveState(db: Database.Database): LiveState {
   const row = db.prepare(`SELECT * FROM live_state WHERE id = 1`).get();
-  return rowToLiveState(row);
+  return rowToLiveState(db, row);
 }
 
 export function setLiveState(
@@ -1094,10 +1351,25 @@ export function setLiveState(
   styleId: number | null
 ): LiveState {
   const updatedAt = new Date().toISOString();
+  // Choosing something new always un-blanks: the operator's intent is unambiguous.
   db.prepare(
-    `UPDATE live_state SET staged_item_id = ?, verse_or_block_id = ?, style_id = ?, updated_at = ? WHERE id = 1`
+    `UPDATE live_state SET staged_item_id = ?, verse_or_block_id = ?, style_id = ?, hidden = 0, updated_at = ? WHERE id = 1`
   ).run(stagedItemId, verseOrBlockId, styleId, updatedAt);
   return getLiveState(db);
+}
+
+/** Blank/restore the OBS output while keeping the current selection. */
+export function setOutputHidden(db: Database.Database, hidden: boolean): LiveState {
+  db.prepare(`UPDATE live_state SET hidden = ?, updated_at = ? WHERE id = 1`).run(
+    hidden ? 1 : 0,
+    new Date().toISOString()
+  );
+  return getLiveState(db);
+}
+
+/** Used when the staged item that was live is removed. */
+export function clearLiveState(db: Database.Database): LiveState {
+  return setLiveState(db, null, null, null);
 }
 ```
 
@@ -1168,15 +1440,44 @@ export function seedDefaultOutputStyles(db: Database.Database): void {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/unit/db/stagedItemsRepository.test.ts tests/unit/db/liveStateRepository.test.ts tests/unit/db/outputStylesRepository.test.ts`
-Expected: PASS (11 tests).
+Expected: PASS (15 tests).
+
+- [ ] **Step 5b: Write `src/main/db/settingsRepository.ts`**
+
+```ts
+import Database from 'better-sqlite3';
+
+export function getSetting(db: Database.Database, key: string): string | null {
+  const row = db.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(key) as { value: string } | undefined;
+  return row ? row.value : null;
+}
+
+export function setSetting(db: Database.Database, key: string, value: string): void {
+  db.prepare(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(key, value);
+}
+
+export const SETTING_TRANSLATION = 'translation';
+
+/**
+ * The active translation, falling back to the first imported one so the app is
+ * never stuck pointing at a translation the operator never imported.
+ */
+export function getActiveTranslation(db: Database.Database, available: string[]): string | null {
+  const stored = getSetting(db, SETTING_TRANSLATION);
+  if (stored && available.includes(stored)) return stored;
+  return available[0] ?? null;
+}
+```
 
 - [ ] **Step 7: Typecheck and commit**
 
 Run: `npm run typecheck && npm test`
 
 ```bash
-git add src/main/db/stagedItemsRepository.ts src/main/db/liveStateRepository.ts src/main/db/outputStylesRepository.ts tests/unit/db/stagedItemsRepository.test.ts tests/unit/db/liveStateRepository.test.ts tests/unit/db/outputStylesRepository.test.ts
-git commit -m "feat: add staged items, live state, and output styles repositories"
+git add src/main/db/stagedItemsRepository.ts src/main/db/liveStateRepository.ts src/main/db/outputStylesRepository.ts src/main/db/settingsRepository.ts tests/unit/db/stagedItemsRepository.test.ts tests/unit/db/liveStateRepository.test.ts tests/unit/db/outputStylesRepository.test.ts
+git commit -m "feat: add staged items, live state (blank + reference), styles, and settings repositories"
 ```
 
 ---
@@ -1189,29 +1490,45 @@ in this repo) rather than assumed from documentation:
 
 - `songs.sqlite` → table `songs(id, title, lyrics, ccli_number, ...)`. `lyrics` is an XML
   string: `<song><lyrics><verse type="v" label="1"><![CDATA[...]]></verse>...</lyrics></song>`.
-  Observed `type` codes are `v` (verse) and `c` (chorus); OpenLP's format also defines `b`
-  (bridge), `p` (pre-chorus), `i` (intro), `e` (ending), `o` (other), `t` (tag) — handle all
-  of them. Each `<verse>` element is already unique in the document (repeats are expressed
-  only in the separate, intentionally-ignored `verse_order` field), so document order is
-  exactly the "unique blocks in first-appearance order" the spec calls for.
+  **`type` is not always a single letter.** Measured across all 556 songs: `v`×2136, `c`×6,
+  `Verse`×95, `Chorus`×21, `Ending`×1. Normalize both spellings, and also handle OpenLP's
+  other documented codes `b` (bridge), `p` (pre-chorus), `i` (intro), `e` (ending),
+  `o` (other), `t` (tag).
+  **`(type, label)` pairs are NOT unique within a song.** "How Sweet the name of Jesus
+  Sounds" has six `<verse>` elements carrying only three distinct pairs (v1, v2, v3 each
+  appear twice with different text). Blocks are therefore stored and identified by document
+  position (`display_order`); the label is display text only. Keying on the label drops half
+  that hymn silently, which is exactly the kind of failure that surfaces mid-service.
 - Bible translation files (e.g. `KJV.sqlite`) → `metadata(key, value)` with `key='name'`
-  giving the translation code (`'KJV'`); `book(id, book_reference_id, testament_reference_id, name)`;
+  giving the translation code (`'KJV'`, `'New English Translation (NET)'`, …);
+  `book(id, book_reference_id, testament_reference_id, name)`;
   `verse(id, book_id, chapter, verse, text)`. `testament_reference_id` takes values `1`, `2`,
   or `3` in the real data (Old Testament, New Testament, Apocrypha) — map `1→'OT'`, `2→'NT'`,
   anything else→`'AP'`.
+  **`book.id` means different books in different files.** KJV has `id=44` → Romans and
+  `id=45` → Acts; NET and NKJV have those two swapped. Books are inserted under
+  `(translation, source_book_id)` and verses reference ServiceFlow's own `bible_books.id`.
+  **`book.id` is not display order either** — use `book_reference_id` for `sort_order`
+  (KJV would otherwise list Romans before Acts). `book_reference_id` is not unique within a
+  file (KJV maps `15` to both Ezra and Esdras), so it sorts but never keys.
+- KJV also brings 12 apocryphal books (source ids 67-78) and one verse numbered 0
+  (Sirach 1:0, 3,133 characters). Both import fine; the length is why Task 7 fits text to
+  the frame.
 
 **Files:**
 - Create: `src/main/import/songXml.ts`
 - Create: `src/main/import/openlpSongsImporter.ts`
 - Create: `src/main/import/openlpBibleImporter.ts`
+- Create: `src/main/import/detectOpenlpFile.ts`
 - Create: `tests/helpers/openlpFixtures.ts`
 - Test: `tests/unit/import/songXml.test.ts`
 - Test: `tests/unit/import/openlpSongsImporter.test.ts`
 - Test: `tests/unit/import/openlpBibleImporter.test.ts`
+- Test: `tests/unit/import/detectOpenlpFile.test.ts`
 
 **Interfaces:**
-- Consumes: `songs`/`song_blocks`/`song_blocks_fts` and `bible_books`/`bible_verses`/`bible_verses_fts` tables (Task 2); `ImportSummary`, `Testament` types (Task 2).
-- Produces: `parseSongLyrics(xml: string): ParsedSongBlock[]`, `typeCodeToName(code: string): string`; `importOpenlpSongs(mainDb, openlpSongsDbPath): ImportSummary`; `importOpenlpBible(mainDb, openlpBibleDbPath): ImportSummary` — all consumed by the `openlp:import` IPC handler in Task 8.
+- Consumes: `songs`/`song_blocks`/`song_blocks_fts` and `bible_books`/`bible_verses`/`bible_verses_fts` tables (Task 2); `normalizeForSearch` (Task 3); `ImportSourceSummary`, `Testament` types (Task 2).
+- Produces: `parseSongLyrics(xml: string): ParsedSongBlock[]`, `typeCodeToName(code: string): string`; `importOpenlpSongs(mainDb, openlpSongsDbPath): ImportSourceSummary`; `importOpenlpBible(mainDb, openlpBibleDbPath): ImportSourceSummary`; `detectOpenlpFile(path): 'songs' | 'bible' | 'unknown'` — all consumed by the `openlp:import` IPC handler in Task 8.
 
 - [ ] **Step 1: Write the failing XML parser test**
 
@@ -1237,6 +1554,14 @@ Lift up your voice and with us sing:]]></verse><verse type="c" label="1"><![CDAT
 Hallelujah, hallelujah, hallelujah!]]></verse><verse type="v" label="2"><![CDATA[Thou rushing wind that art so strong,
 Ye clouds that sail in heaven along,]]></verse></lyrics></song>`;
 
+// Real row: six <verse> elements, only three distinct (type,label) pairs.
+const HOW_SWEET_XML = `<?xml version='1.0' encoding='UTF-8'?>
+<song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[How sweet the name of Jesus sounds]]></verse><verse type="v" label="1"><![CDATA[It makes the wounded spirit whole]]></verse><verse type="v" label="2"><![CDATA[Dear name, the rock on which I build]]></verse><verse type="v" label="2"><![CDATA[Jesus! My Shepherd, Saviour, Friend]]></verse><verse type="v" label="3"><![CDATA[Weak is the effort of my heart]]></verse><verse type="v" label="3"><![CDATA[Till then I would Thy love proclaim]]></verse></lyrics></song>`;
+
+// Real rows in this library spell the type out in full.
+const FULL_WORD_TYPE_XML = `<?xml version='1.0' encoding='UTF-8'?>
+<song version="1.0"><lyrics><verse type="Verse" label="1"><![CDATA[Line one]]></verse><verse type="Chorus" label="1"><![CDATA[Line two]]></verse><verse type="Ending" label="1"><![CDATA[Line three]]></verse></lyrics></song>`;
+
 describe('parseSongLyrics', () => {
   it('parses multiple verse-only blocks in document order', () => {
     const blocks = parseSongLyrics(ABIDE_WITH_ME_XML);
@@ -1250,6 +1575,12 @@ describe('parseSongLyrics', () => {
     const blocks = parseSongLyrics(ALL_CREATURES_XML);
     expect(blocks.map((b) => `${b.type}${b.label}`)).toEqual(['v1', 'c1', 'v2']);
   });
+
+  it('keeps every block when a (type,label) pair repeats', () => {
+    const blocks = parseSongLyrics(HOW_SWEET_XML);
+    expect(blocks).toHaveLength(6);
+    expect(blocks[1].text).toContain('It makes the wounded spirit whole');
+  });
 });
 
 describe('typeCodeToName', () => {
@@ -1259,8 +1590,20 @@ describe('typeCodeToName', () => {
     expect(typeCodeToName('b')).toBe('Bridge');
   });
 
-  it('falls back to the uppercased code for unknown types', () => {
+  it('accepts the full-word spellings this library actually uses', () => {
+    expect(typeCodeToName('Verse')).toBe('Verse');
+    expect(typeCodeToName('Chorus')).toBe('Chorus');
+    expect(typeCodeToName('Ending')).toBe('Ending');
+    expect(parseSongLyrics(FULL_WORD_TYPE_XML).map((b) => typeCodeToName(b.type))).toEqual([
+      'Verse',
+      'Chorus',
+      'Ending',
+    ]);
+  });
+
+  it('falls back to a capitalized form for unknown types', () => {
     expect(typeCodeToName('x')).toBe('X');
+    expect(typeCodeToName('refrain')).toBe('Refrain');
   });
 });
 ```
@@ -1281,19 +1624,32 @@ export interface ParsedSongBlock {
   text: string;
 }
 
+// This library mixes single-letter codes with full words in the same column
+// (v×2136, c×6, Verse×95, Chorus×21, Ending×1), so both spellings map here.
 const TYPE_NAMES: Record<string, string> = {
   v: 'Verse',
+  verse: 'Verse',
   c: 'Chorus',
+  chorus: 'Chorus',
   b: 'Bridge',
+  bridge: 'Bridge',
   p: 'Pre-Chorus',
+  'pre-chorus': 'Pre-Chorus',
   i: 'Intro',
+  intro: 'Intro',
   e: 'Ending',
+  ending: 'Ending',
   o: 'Other',
+  other: 'Other',
   t: 'Tag',
+  tag: 'Tag',
 };
 
 export function typeCodeToName(code: string): string {
-  return TYPE_NAMES[code.toLowerCase()] ?? code.toUpperCase();
+  const key = code.trim().toLowerCase();
+  if (TYPE_NAMES[key]) return TYPE_NAMES[key];
+  // Unknown single letters read best uppercased; unknown words read best capitalized.
+  return key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
 }
 
 export function parseSongLyrics(xml: string): ParsedSongBlock[] {
@@ -1316,7 +1672,7 @@ export function parseSongLyrics(xml: string): ParsedSongBlock[] {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run tests/unit/import/songXml.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Write the fixture helper `tests/helpers/openlpFixtures.ts`**
 
@@ -1351,7 +1707,9 @@ export function createFixtureSongsDb(
 
 export function createFixtureBibleDb(
   translationName: string,
-  books: { id: number; name: string; testamentReferenceId: number }[],
+  // bookReferenceId defaults to id, but tests MUST be able to set it independently:
+  // in the real KJV file, book id 44 (Romans) carries book_reference_id 45.
+  books: { id: number; name: string; testamentReferenceId: number; bookReferenceId?: number }[],
   verses: { bookId: number; chapter: number; verse: number; text: string }[]
 ): string {
   const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-bible-')), 'bible.sqlite');
@@ -1365,7 +1723,7 @@ export function createFixtureBibleDb(
   const insertBook = db.prepare(
     `INSERT INTO book (id, book_reference_id, testament_reference_id, name) VALUES (?, ?, ?, ?)`
   );
-  books.forEach((b) => insertBook.run(b.id, b.id, b.testamentReferenceId, b.name));
+  books.forEach((b) => insertBook.run(b.id, b.bookReferenceId ?? b.id, b.testamentReferenceId, b.name));
   const insertVerse = db.prepare(`INSERT INTO verse (book_id, chapter, verse, text) VALUES (?, ?, ?, ?)`);
   verses.forEach((v) => insertVerse.run(v.bookId, v.chapter, v.verse, v.text));
   db.close();
@@ -1398,8 +1756,15 @@ beforeEach(() => {
   applySchema(mainDb);
 });
 
+// Real row, trimmed: six blocks, three distinct (type,label) pairs.
+const HOW_SWEET_XML = `<?xml version='1.0' encoding='UTF-8'?>
+<song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[How sweet the name of Jesus sounds]]></verse><verse type="v" label="1"><![CDATA[It makes the wounded spirit whole]]></verse><verse type="v" label="2"><![CDATA[Dear name, the rock on which I build]]></verse><verse type="v" label="2"><![CDATA[Jesus! My Shepherd, Saviour, Friend]]></verse><verse type="v" label="3"><![CDATA[Weak is the effort of my heart]]></verse><verse type="v" label="3"><![CDATA[Till then I would Thy love proclaim]]></verse></lyrics></song>`;
+
+const CURLY_APOSTROPHE_XML = `<?xml version='1.0' encoding='UTF-8'?>
+<song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[In a believer’s ear!]]></verse></lyrics></song>`;
+
 describe('importOpenlpSongs', () => {
-  it('imports songs and their unique blocks in document order', () => {
+  it('imports songs and their blocks in document order', () => {
     const fixturePath = createFixtureSongsDb([
       { title: 'All Creatures of our God and King', lyrics: ALL_CREATURES_XML, ccliNumber: '12345' },
     ]);
@@ -1407,10 +1772,27 @@ describe('importOpenlpSongs', () => {
     const summary = importOpenlpSongs(mainDb, fixturePath);
 
     expect(summary.imported).toBe(1);
+    expect(summary.kind).toBe('songs');
     expect(summary.errors).toHaveLength(0);
     const song = findSongsByTitle(mainDb, 'All Creatures')[0];
     const blocks = getBlocksForSong(mainDb, song.id);
     expect(blocks.map((b) => b.label)).toEqual(['Verse 1', 'Chorus 1', 'Verse 2']);
+  });
+
+  // Guards the "How Sweet the name of Jesus Sounds" data shape: keying blocks by
+  // label instead of position would silently import three of these six blocks.
+  it('keeps every block when a song repeats a (type,label) pair', () => {
+    const fixturePath = createFixtureSongsDb([
+      { title: 'How Sweet the name of Jesus Sounds', lyrics: HOW_SWEET_XML },
+    ]);
+
+    importOpenlpSongs(mainDb, fixturePath);
+
+    const song = findSongsByTitle(mainDb, 'How Sweet')[0];
+    const blocks = getBlocksForSong(mainDb, song.id);
+    expect(blocks).toHaveLength(6);
+    expect(blocks[1].text).toContain('It makes the wounded spirit whole');
+    expect(blocks.map((b) => b.displayOrder)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
   it('is idempotent — re-importing upserts rather than duplicates', () => {
@@ -1424,6 +1806,29 @@ describe('importOpenlpSongs', () => {
     expect(findSongsByTitle(mainDb, 'All Creatures')).toHaveLength(1);
     const song = findSongsByTitle(mainDb, 'All Creatures')[0];
     expect(getBlocksForSong(mainDb, song.id)).toHaveLength(3);
+  });
+
+  it('drops blocks that no longer exist in the OpenLP source', () => {
+    const before = createFixtureSongsDb([{ title: 'Shrinking Song', lyrics: ALL_CREATURES_XML }]);
+    importOpenlpSongs(mainDb, before);
+
+    const after = createFixtureSongsDb([
+      {
+        title: 'Shrinking Song',
+        lyrics:
+          '<?xml version="1.0"?><song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[Only one left]]></verse></lyrics></song>',
+      },
+    ]);
+    importOpenlpSongs(mainDb, after);
+
+    const song = findSongsByTitle(mainDb, 'Shrinking')[0];
+    expect(getBlocksForSong(mainDb, song.id)).toHaveLength(1);
+  });
+
+  it('indexes typographic apostrophes so an ASCII query finds them', () => {
+    const fixturePath = createFixtureSongsDb([{ title: 'How Sweet', lyrics: CURLY_APOSTROPHE_XML }]);
+    importOpenlpSongs(mainDb, fixturePath);
+    expect(searchSongContent(mainDb, "believer's").length).toBeGreaterThan(0);
   });
 
   it('makes imported lyrics searchable via FTS', () => {
@@ -1454,7 +1859,7 @@ describe('importOpenlpSongs', () => {
 - [ ] **Step 7: Run the test to verify it fails**
 
 Run: `npx vitest run tests/unit/import/openlpSongsImporter.test.ts`
-Expected: FAIL — module not found.
+Expected: FAIL — module not found. (7 tests once implemented.)
 
 - [ ] **Step 8: Write `src/main/import/openlpSongsImporter.ts`**
 
@@ -1464,13 +1869,24 @@ node), so it returns an empty block list rather than throwing. Treat zero parsed
 as the malformed case explicitly.
 
 ```ts
+import path from 'path';
 import Database from 'better-sqlite3';
-import { ImportSummary } from '../../shared/types';
+import { ImportSourceSummary } from '../../shared/types';
+import { normalizeForSearch } from '../db/fts';
 import { parseSongLyrics, typeCodeToName } from './songXml';
 
-export function importOpenlpSongs(mainDb: Database.Database, openlpSongsDbPath: string): ImportSummary {
+export function importOpenlpSongs(
+  mainDb: Database.Database,
+  openlpSongsDbPath: string
+): ImportSourceSummary {
   const source = new Database(openlpSongsDbPath, { readonly: true });
-  const summary: ImportSummary = { imported: 0, skipped: 0, errors: [] };
+  const summary: ImportSourceSummary = {
+    file: path.basename(openlpSongsDbPath),
+    kind: 'songs',
+    imported: 0,
+    skipped: 0,
+    errors: [],
+  };
   try {
     const rows = source.prepare(`SELECT title, lyrics, ccli_number FROM songs`).all() as any[];
 
@@ -1479,12 +1895,17 @@ export function importOpenlpSongs(mainDb: Database.Database, openlpSongsDbPath: 
        ON CONFLICT(title) DO UPDATE SET ccli_number = excluded.ccli_number`
     );
     const getSongId = mainDb.prepare(`SELECT id FROM songs WHERE title = ?`);
-    const upsertBlock = mainDb.prepare(
-      `INSERT INTO song_blocks (song_id, label, text, display_order) VALUES (?, ?, ?, ?)
-       ON CONFLICT(song_id, label) DO UPDATE SET text = excluded.text, display_order = excluded.display_order`
+    // Blocks are replaced wholesale rather than upserted: a (type,label) pair can repeat
+    // within one song, and a re-import must also drop blocks deleted in OpenLP.
+    const existingBlocks = mainDb.prepare(`SELECT id, text FROM song_blocks WHERE song_id = ?`);
+    const deleteFtsRow = mainDb.prepare(
+      `INSERT INTO song_blocks_fts (song_blocks_fts, rowid, text) VALUES ('delete', ?, ?)`
     );
-    const getBlockId = mainDb.prepare(`SELECT id FROM song_blocks WHERE song_id = ? AND label = ?`);
-    const insertFts = mainDb.prepare(`INSERT OR REPLACE INTO song_blocks_fts (rowid, text) VALUES (?, ?)`);
+    const deleteBlocks = mainDb.prepare(`DELETE FROM song_blocks WHERE song_id = ?`);
+    const insertBlock = mainDb.prepare(
+      `INSERT INTO song_blocks (song_id, label, text, display_order) VALUES (?, ?, ?, ?)`
+    );
+    const insertFts = mainDb.prepare(`INSERT INTO song_blocks_fts (rowid, text) VALUES (?, ?)`);
 
     const tx = mainDb.transaction((songRows: any[]) => {
       for (const row of songRows) {
@@ -1495,11 +1916,17 @@ export function importOpenlpSongs(mainDb: Database.Database, openlpSongsDbPath: 
           }
           upsertSong.run(row.title, row.ccli_number ?? null);
           const songId = (getSongId.get(row.title) as { id: number }).id;
+          // The FTS 'delete' command must be given the text exactly as it was INDEXED,
+          // i.e. the normalized copy — not the raw stored text.
+          for (const old of existingBlocks.all(songId) as { id: number; text: string }[]) {
+            deleteFtsRow.run(old.id, normalizeForSearch(old.text));
+          }
+          deleteBlocks.run(songId);
           blocks.forEach((block, index) => {
             const label = `${typeCodeToName(block.type)} ${block.label}`;
-            upsertBlock.run(songId, label, block.text, index);
-            const blockId = (getBlockId.get(songId, label) as { id: number }).id;
-            insertFts.run(blockId, block.text);
+            const info = insertBlock.run(songId, label, block.text, index);
+            // Index a punctuation-normalized copy; the displayed text keeps its own quotes.
+            insertFts.run(info.lastInsertRowid, normalizeForSearch(block.text));
           });
           summary.imported += 1;
         } catch (err) {
@@ -1516,10 +1943,18 @@ export function importOpenlpSongs(mainDb: Database.Database, openlpSongsDbPath: 
 }
 ```
 
+**Why the awkward FTS delete.** `song_blocks_fts` is an external-content FTS5 table.
+Verified behaviour: `INSERT OR REPLACE INTO …_fts (rowid, text)` does **not** retract the
+old terms — after replacing "alpha original" with "beta revised" on the same rowid, a
+search for `alpha` still matches. Rows must be retracted with FTS5's `'delete'` command,
+passing the text **exactly as it was indexed** (so the normalized copy, not the raw text).
+Get this wrong and searches return verses that no longer contain the search term — which,
+in a live service, is how the operator puts the wrong verse on screen.
+
 - [ ] **Step 9: Run the test to verify it passes**
 
 Run: `npx vitest run tests/unit/import/openlpSongsImporter.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 10: Write the failing bible importer test**
 
@@ -1557,12 +1992,64 @@ describe('importOpenlpBible', () => {
     const summary = importOpenlpBible(mainDb, fixturePath);
 
     expect(summary.imported).toBe(2);
+    expect(summary.kind).toBe('bible');
+    expect(summary.translation).toBe('KJV');
     expect(summary.errors).toHaveLength(0);
-    expect(findBooksByName(mainDb, 'John')[0].testament).toBe('NT');
-    expect(findBooksByName(mainDb, 'Genesis')[0].testament).toBe('OT');
-    const verses = getVersesForChapter(mainDb, 43, 3, 'KJV');
-    expect(verses[0].text).toContain('begotten Son');
-    expect(verses[0].translation).toBe('KJV');
+    expect(findBooksByName(mainDb, 'John', 'KJV')[0].testament).toBe('NT');
+    expect(findBooksByName(mainDb, 'Genesis', 'KJV')[0].testament).toBe('OT');
+    const john = findBooksByName(mainDb, 'John', 'KJV')[0];
+    expect(getVersesForChapter(mainDb, john.id, 3)[0].text).toContain('begotten Son');
+  });
+
+  // The single most important test in this plan. In the church's real files KJV's
+  // source book 44 is Romans and NET's source book 44 is Acts; getting this wrong
+  // captions Romans as "Acts" on the live stream.
+  it('keeps two translations apart when they reuse a source book id for different books', () => {
+    const kjvPath = createFixtureBibleDb(
+      'KJV',
+      [
+        { id: 44, name: 'Romans', testamentReferenceId: 2, bookReferenceId: 45 },
+        { id: 45, name: 'Acts', testamentReferenceId: 2, bookReferenceId: 44 },
+      ],
+      [
+        { bookId: 44, chapter: 1, verse: 1, text: 'Paul, a servant of Jesus Christ.' },
+        { bookId: 45, chapter: 1, verse: 1, text: 'The former treatise have I made, O Theophilus.' },
+      ]
+    );
+    const netPath = createFixtureBibleDb(
+      'NET',
+      [
+        { id: 44, name: 'Acts', testamentReferenceId: 2, bookReferenceId: 44 },
+        { id: 45, name: 'Romans', testamentReferenceId: 2, bookReferenceId: 45 },
+      ],
+      [
+        { bookId: 44, chapter: 1, verse: 1, text: 'I wrote the former account, Theophilus.' },
+        { bookId: 45, chapter: 1, verse: 1, text: 'From Paul, a slave of Christ Jesus.' },
+      ]
+    );
+
+    importOpenlpBible(mainDb, kjvPath);
+    importOpenlpBible(mainDb, netPath);
+
+    const kjvRomans = findBooksByName(mainDb, 'Romans', 'KJV')[0];
+    const netActs = findBooksByName(mainDb, 'Acts', 'NET')[0];
+    expect(getVersesForChapter(mainDb, kjvRomans.id, 1)[0].text).toContain('Paul, a servant');
+    expect(getVersesForChapter(mainDb, netActs.id, 1)[0].text).toContain('I wrote the former account');
+    // And KJV's own books are still named correctly after the second import.
+    expect(findBooksByName(mainDb, 'Acts', 'KJV')[0].sourceBookId).toBe(45);
+  });
+
+  it('sorts books by book_reference_id, not by source book id', () => {
+    const fixturePath = createFixtureBibleDb(
+      'KJV',
+      [
+        { id: 44, name: 'Romans', testamentReferenceId: 2, bookReferenceId: 45 },
+        { id: 45, name: 'Acts', testamentReferenceId: 2, bookReferenceId: 44 },
+      ],
+      [{ bookId: 44, chapter: 1, verse: 1, text: 'Paul, a servant of Jesus Christ.' }]
+    );
+    importOpenlpBible(mainDb, fixturePath);
+    expect(findBooksByName(mainDb, '', 'KJV').map((b) => b.name)).toEqual(['Acts', 'Romans']);
   });
 
   it('maps an unrecognized testament_reference_id to Apocrypha', () => {
@@ -1572,7 +2059,7 @@ describe('importOpenlpBible', () => {
       [{ bookId: 70, chapter: 1, verse: 1, text: 'In the days of Enemessar...' }]
     );
     importOpenlpBible(mainDb, fixturePath);
-    expect(findBooksByName(mainDb, 'Tobit')[0].testament).toBe('AP');
+    expect(findBooksByName(mainDb, 'Tobit', 'KJV')[0].testament).toBe('AP');
   });
 
   it('is idempotent — re-importing upserts verse text rather than duplicating rows', () => {
@@ -1583,7 +2070,9 @@ describe('importOpenlpBible', () => {
     );
     importOpenlpBible(mainDb, fixturePath);
     importOpenlpBible(mainDb, fixturePath);
-    expect(getVersesForChapter(mainDb, 1, 1, 'KJV')).toHaveLength(1);
+    const genesis = findBooksByName(mainDb, 'Genesis', 'KJV')[0];
+    expect(getVersesForChapter(mainDb, genesis.id, 1)).toHaveLength(1);
+    expect(searchBibleContent(mainDb, 'Original', 'KJV')).toHaveLength(1);
   });
 
   it('makes imported verse text searchable via FTS', () => {
@@ -1594,6 +2083,25 @@ describe('importOpenlpBible', () => {
     );
     importOpenlpBible(mainDb, fixturePath);
     expect(searchBibleContent(mainDb, 'begotten', 'KJV')).toHaveLength(1);
+  });
+
+  // FTS5 external-content tables keep old terms unless they are explicitly retracted.
+  it('leaves no stale search hits after a verse text changes', () => {
+    const before = createFixtureBibleDb(
+      'KJV',
+      [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }],
+      [{ bookId: 1, chapter: 1, verse: 1, text: 'Aardvark original wording.' }]
+    );
+    importOpenlpBible(mainDb, before);
+    const after = createFixtureBibleDb(
+      'KJV',
+      [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }],
+      [{ bookId: 1, chapter: 1, verse: 1, text: 'Zebra revised wording.' }]
+    );
+    importOpenlpBible(mainDb, after);
+
+    expect(searchBibleContent(mainDb, 'Aardvark', 'KJV')).toHaveLength(0);
+    expect(searchBibleContent(mainDb, 'Zebra', 'KJV')).toHaveLength(1);
   });
 });
 ```
@@ -1606,8 +2114,10 @@ Expected: FAIL — module not found.
 - [ ] **Step 12: Write `src/main/import/openlpBibleImporter.ts`**
 
 ```ts
+import path from 'path';
 import Database from 'better-sqlite3';
-import { ImportSummary, Testament } from '../../shared/types';
+import { ImportSourceSummary, Testament } from '../../shared/types';
+import { normalizeForSearch } from '../db/fts';
 
 function mapTestament(testamentReferenceId: number): Testament {
   if (testamentReferenceId === 1) return 'OT';
@@ -1615,47 +2125,92 @@ function mapTestament(testamentReferenceId: number): Testament {
   return 'AP';
 }
 
-export function importOpenlpBible(mainDb: Database.Database, openlpBibleDbPath: string): ImportSummary {
+export function importOpenlpBible(
+  mainDb: Database.Database,
+  openlpBibleDbPath: string
+): ImportSourceSummary {
   const source = new Database(openlpBibleDbPath, { readonly: true });
-  const summary: ImportSummary = { imported: 0, skipped: 0, errors: [] };
+  const summary: ImportSourceSummary = {
+    file: path.basename(openlpBibleDbPath),
+    kind: 'bible',
+    imported: 0,
+    skipped: 0,
+    errors: [],
+  };
   try {
     const meta = source.prepare(`SELECT value FROM metadata WHERE key = 'name'`).get() as
       | { value: string }
       | undefined;
-    const translation = meta?.value ?? 'UNKNOWN';
+    const translation = (meta?.value ?? path.basename(openlpBibleDbPath, '.sqlite')).trim();
+    summary.translation = translation;
 
-    const books = source.prepare(`SELECT id, name, testament_reference_id FROM book`).all() as any[];
+    const books = source
+      .prepare(`SELECT id, name, book_reference_id, testament_reference_id FROM book`)
+      .all() as any[];
     const upsertBook = mainDb.prepare(
-      `INSERT INTO bible_books (id, name, testament, sort_order) VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET name = excluded.name, testament = excluded.testament, sort_order = excluded.sort_order`
+      `INSERT INTO bible_books (translation, source_book_id, name, testament, sort_order) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(translation, source_book_id)
+       DO UPDATE SET name = excluded.name, testament = excluded.testament, sort_order = excluded.sort_order`
     );
+    const getBookId = mainDb.prepare(
+      `SELECT id FROM bible_books WHERE translation = ? AND source_book_id = ?`
+    );
+
+    // Source book ids are only meaningful inside this file, so translate them once here
+    // and never let one escape into the rest of the app.
+    const bookIdBySourceId = new Map<number, number>();
     const bookTx = mainDb.transaction((bookRows: any[]) => {
       for (const b of bookRows) {
-        upsertBook.run(b.id, b.name, mapTestament(b.testament_reference_id), b.id);
+        upsertBook.run(
+          translation,
+          b.id,
+          b.name,
+          mapTestament(b.testament_reference_id),
+          b.book_reference_id ?? b.id // display order; NOT a key — KJV reuses 15 twice
+        );
+        bookIdBySourceId.set(b.id, (getBookId.get(translation, b.id) as { id: number }).id);
       }
     });
     bookTx(books);
 
     const verses = source.prepare(`SELECT book_id, chapter, verse, text FROM verse`).all() as any[];
-    const upsertVerse = mainDb.prepare(
-      `INSERT INTO bible_verses (book_id, chapter, verse, text, translation) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(book_id, chapter, verse, translation) DO UPDATE SET text = excluded.text`
+    const findVerse = mainDb.prepare(
+      `SELECT id, text FROM bible_verses WHERE book_id = ? AND chapter = ? AND verse = ?`
     );
-    const getVerseId = mainDb.prepare(
-      `SELECT id FROM bible_verses WHERE book_id = ? AND chapter = ? AND verse = ? AND translation = ?`
+    const insertVerse = mainDb.prepare(
+      `INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (?, ?, ?, ?)`
     );
-    const insertFts = mainDb.prepare(`INSERT OR REPLACE INTO bible_verses_fts (rowid, text) VALUES (?, ?)`);
+    const updateVerse = mainDb.prepare(`UPDATE bible_verses SET text = ? WHERE id = ?`);
+    const ftsInsert = mainDb.prepare(`INSERT INTO bible_verses_fts (rowid, text) VALUES (?, ?)`);
+    const ftsDelete = mainDb.prepare(
+      `INSERT INTO bible_verses_fts (bible_verses_fts, rowid, text) VALUES ('delete', ?, ?)`
+    );
 
     const verseTx = mainDb.transaction((verseRows: any[]) => {
       for (const v of verseRows) {
         try {
-          upsertVerse.run(v.book_id, v.chapter, v.verse, v.text, translation);
-          const verseRow = getVerseId.get(v.book_id, v.chapter, v.verse, translation) as { id: number };
-          insertFts.run(verseRow.id, v.text);
+          const bookId = bookIdBySourceId.get(v.book_id);
+          if (bookId == null) throw new Error(`verse references unknown source book id ${v.book_id}`);
+          const existing = findVerse.get(bookId, v.chapter, v.verse) as
+            | { id: number; text: string }
+            | undefined;
+          if (!existing) {
+            const info = insertVerse.run(bookId, v.chapter, v.verse, v.text);
+            ftsInsert.run(info.lastInsertRowid, normalizeForSearch(v.text));
+          } else if (existing.text !== v.text) {
+            // Retract the old terms with the text as indexed, then re-index. See the
+            // songs importer note: INSERT OR REPLACE would leave the old words searchable.
+            ftsDelete.run(existing.id, normalizeForSearch(existing.text));
+            updateVerse.run(v.text, existing.id);
+            ftsInsert.run(existing.id, normalizeForSearch(v.text));
+          }
           summary.imported += 1;
         } catch (err) {
           summary.skipped += 1;
-          summary.errors.push({ identifier: `${v.book_id}:${v.chapter}:${v.verse}`, reason: (err as Error).message });
+          summary.errors.push({
+            identifier: `${translation} ${v.book_id}:${v.chapter}:${v.verse}`,
+            reason: (err as Error).message,
+          });
         }
       }
     });
@@ -1670,9 +2225,65 @@ export function importOpenlpBible(mainDb: Database.Database, openlpBibleDbPath: 
 - [ ] **Step 13: Run the test to verify it passes**
 
 Run: `npx vitest run tests/unit/import/openlpBibleImporter.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (7 tests).
 
-- [ ] **Step 14: Typecheck, run the full test suite, and commit**
+- [ ] **Step 14: Write `src/main/import/detectOpenlpFile.ts` and its test**
+
+The operator picks several `.sqlite` files at once and ServiceFlow must decide which is
+which. Do it by looking inside the file, never by its name — a bible file living under
+`C:\Users\songleader\...` would otherwise be imported as a song library.
+
+`tests/unit/import/detectOpenlpFile.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { detectOpenlpFile } from '../../../src/main/import/detectOpenlpFile';
+import { createFixtureSongsDb, createFixtureBibleDb } from '../../helpers/openlpFixtures';
+
+describe('detectOpenlpFile', () => {
+  it('identifies a songs database by its schema, not its filename', () => {
+    const p = createFixtureSongsDb([{ title: 'X', lyrics: '<song/>' }]);
+    expect(detectOpenlpFile(p)).toBe('songs');
+  });
+
+  it('identifies a bible database by its schema', () => {
+    const p = createFixtureBibleDb('KJV', [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }], []);
+    expect(detectOpenlpFile(p)).toBe('bible');
+  });
+
+  it('returns unknown for anything else', () => {
+    const p = createFixtureBibleDb('KJV', [], []);
+    expect(['bible', 'unknown']).toContain(detectOpenlpFile(p));
+  });
+});
+```
+
+```ts
+import Database from 'better-sqlite3';
+
+export type OpenlpFileKind = 'songs' | 'bible' | 'unknown';
+
+export function detectOpenlpFile(filePath: string): OpenlpFileKind {
+  let db: Database.Database | null = null;
+  try {
+    db = new Database(filePath, { readonly: true, fileMustExist: true });
+    const tables = new Set(
+      (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map(
+        (r) => r.name
+      )
+    );
+    if (tables.has('songs')) return 'songs';
+    if (tables.has('verse') && tables.has('book')) return 'bible';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  } finally {
+    db?.close();
+  }
+}
+```
+
+- [ ] **Step 15: Typecheck, run the full test suite, and commit**
 
 Run: `npm run typecheck && npm test`
 
@@ -1690,7 +2301,7 @@ git commit -m "feat: import songs and Bible translations from real OpenLP databa
 - Test: `tests/integration/server.test.ts`
 
 **Interfaces:**
-- Consumes: `getLiveState` (Task 4), `getActiveStyle` (Task 4); `bible_verses`/`bible_books`/`song_blocks`/`songs`/`output_styles` tables (Task 2); `OutputPayload` type (Task 2).
+- Consumes: `getLiveState` (which already supplies the human-readable `reference` and the `hidden` flag) and `getActiveStyle` (Task 4); `bible_verses`/`bible_books`/`song_blocks`/`songs`/`output_styles` tables (Task 2); `OutputPayload` type (Task 2).
 - Produces: `createServer(db): ServerHandle` where `ServerHandle = { start(port: number): Promise<number>; stop(): Promise<void>; broadcastLiveUpdate(): void }`, and `buildOutputPayload(db): OutputPayload` — both consumed by `main/index.ts` and `ipc/handlers.ts` in Task 8.
 
 - [ ] **Step 1: Write the failing integration test**
@@ -1704,7 +2315,7 @@ import WebSocket from 'ws';
 import { applySchema } from '../../src/main/db/schema';
 import { seedDefaultOutputStyles } from '../../src/main/db/outputStylesRepository';
 import { addStagedItem } from '../../src/main/db/stagedItemsRepository';
-import { setLiveState } from '../../src/main/db/liveStateRepository';
+import { setLiveState, setOutputHidden } from '../../src/main/db/liveStateRepository';
 import { createServer, ServerHandle } from '../../src/main/server/server';
 
 let db: Database.Database;
@@ -1725,9 +2336,11 @@ beforeEach(async () => {
   db = new Database(':memory:');
   applySchema(db);
   seedDefaultOutputStyles(db);
-  db.prepare(`INSERT INTO bible_books (id, name, testament, sort_order) VALUES (43, 'John', 'NT', 43)`).run();
   db.prepare(
-    `INSERT INTO bible_verses (id, book_id, chapter, verse, text, translation) VALUES (1, 43, 3, 16, 'For God so loved the world.', 'KJV')`
+    `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (43, 'KJV', 43, 'John', 'NT', 43)`
+  ).run();
+  db.prepare(
+    `INSERT INTO bible_verses (id, book_id, chapter, verse, text) VALUES (1, 43, 3, 16, 'For God so loved the world.')`
   ).run();
   server = createServer(db);
   port = await server.start(0);
@@ -1778,6 +2391,20 @@ describe('embedded server', () => {
     expect(message.payload.text).toBe('For God so loved the world.');
     socket.close();
   });
+
+  it('reports a blanked output while keeping the selection', async () => {
+    const stagedItem = addStagedItem(db, 'bible', 43, 3);
+    setLiveState(db, stagedItem.id, 1, null);
+    setOutputHidden(db, true);
+
+    const socket = new WebSocket(`ws://localhost:${port}/ws`);
+    await waitForOpen(socket);
+    const message = await waitForMessage(socket);
+
+    expect(message.payload.hidden).toBe(true);
+    expect(message.payload.reference).toBe('John 3:16');
+    socket.close();
+  });
 });
 ```
 
@@ -1804,6 +2431,7 @@ const EMPTY_PAYLOAD: OutputPayload = {
   reference: null,
   styleId: null,
   templateKey: null,
+  hidden: false,
 };
 
 export function buildOutputPayload(db: Database.Database): OutputPayload {
@@ -1818,33 +2446,24 @@ export function buildOutputPayload(db: Database.Database): OutputPayload {
     ? (db.prepare(`SELECT * FROM output_styles WHERE id = ?`).get(live.styleId) as any)
     : getActiveStyle(db, contentType);
 
-  if (contentType === 'bible') {
-    const verse = db
-      .prepare(
-        `SELECT bv.*, bb.name as book_name FROM bible_verses bv JOIN bible_books bb ON bb.id = bv.book_id WHERE bv.id = ?`
-      )
-      .get(live.verseOrBlockId) as any;
-    if (!verse) return EMPTY_PAYLOAD;
-    return {
-      contentType: 'bible',
-      text: verse.text,
-      reference: `${verse.book_name} ${verse.chapter}:${verse.verse}`,
-      styleId: style?.id ?? null,
-      templateKey: style?.template_key ?? null,
-    };
-  }
-
-  const block = db
-    .prepare(`SELECT sb.*, s.title as song_title FROM song_blocks sb JOIN songs s ON s.id = sb.song_id WHERE sb.id = ?`)
-    .get(live.verseOrBlockId) as any;
-  if (!block) return EMPTY_PAYLOAD;
-  return {
-    contentType: 'song',
-    text: block.text,
-    reference: `${block.song_title} — ${block.label}`,
+  // `reference` comes from liveStateRepository so the operator banner, the OBS output
+  // and the tests can never disagree about what is on screen.
+  const base = {
+    reference: live.reference,
     styleId: style?.id ?? null,
     templateKey: style?.template_key ?? null,
+    hidden: live.hidden,
   };
+
+  if (contentType === 'bible') {
+    const verse = db.prepare(`SELECT text FROM bible_verses WHERE id = ?`).get(live.verseOrBlockId) as any;
+    if (!verse) return EMPTY_PAYLOAD;
+    return { contentType: 'bible', text: verse.text, ...base };
+  }
+
+  const block = db.prepare(`SELECT text FROM song_blocks WHERE id = ?`).get(live.verseOrBlockId) as any;
+  if (!block) return EMPTY_PAYLOAD;
+  return { contentType: 'song', text: block.text, ...base };
 }
 
 export interface ServerHandle {
@@ -1897,7 +2516,7 @@ export function createServer(db: Database.Database): ServerHandle {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run tests/integration/server.test.ts`
-Expected: PASS (4 tests). Note: `/output/` will 404 until Task 7 adds `src/output/index.html` — if Step 4 is run before Task 7 exists, that first assertion will fail with a 404. Since Task 7 is the very next task and this file must exist for the server to be meaningfully tested end-to-end, create an empty placeholder now so this task is independently green:
+Expected: PASS (5 tests). Note: `/output/` will 404 until Task 7 adds `src/output/index.html` — if Step 4 is run before Task 7 exists, that first assertion will fail with a 404. Since Task 7 is the very next task and this file must exist for the server to be meaningfully tested end-to-end, create an empty placeholder now so this task is independently green:
 
 `src/output/index.html` (placeholder, replaced with real content in Task 7):
 
@@ -1923,12 +2542,14 @@ git commit -m "feat: add embedded HTTP+WebSocket server for the OBS output page"
 - Modify: `src/output/index.html` (replace Task 6's placeholder)
 - Create: `src/output/output.css`
 - Create: `src/output/render.js`
+- Create: `src/output/fit.js`
 - Create: `src/output/output.js`
 - Test: `tests/unit/output/render.test.ts`
+- Test: `tests/unit/output/fit.test.ts`
 
 **Interfaces:**
-- Consumes: the `{contentType, text, reference, styleId, templateKey}` shape of `OutputPayload` (Task 2/6), and the `{type: 'live_update', payload}` WebSocket message shape (Task 6).
-- Produces: `renderState(state, rootEl)` (pure DOM function, exported from `render.js`) — used by `output.js` and directly unit-tested.
+- Consumes: the `{contentType, text, reference, styleId, templateKey, hidden}` shape of `OutputPayload` (Task 2/6), and the `{type: 'live_update', payload}` WebSocket message shape (Task 6).
+- Produces: `renderState(state, rootEl)` (pure DOM function, exported from `render.js`) and `fitFontSize(overflows, opts)` (`fit.js`) — used by `output.js` and directly unit-tested.
 
 - [ ] **Step 1: Write the failing render test**
 
@@ -1946,14 +2567,30 @@ describe('renderState', () => {
   });
 
   it('renders nothing and hides the root when contentType is null', () => {
-    renderState({ contentType: null, text: null, reference: null, styleId: null, templateKey: null }, root);
+    renderState({ contentType: null, text: null, reference: null, styleId: null, templateKey: null, hidden: false }, root);
+    expect(root.innerHTML).toBe('');
+    expect(root.className).toContain('hidden');
+  });
+
+  it('renders nothing when the operator has blanked the output', () => {
+    renderState(
+      {
+        contentType: 'bible',
+        text: 'For God so loved the world.',
+        reference: 'John 3:16',
+        styleId: 1,
+        templateKey: 'bible-classic',
+        hidden: true,
+      },
+      root
+    );
     expect(root.innerHTML).toBe('');
     expect(root.className).toContain('hidden');
   });
 
   it('renders verse text and reference for a bible payload', () => {
     renderState(
-      { contentType: 'bible', text: 'For God so loved the world.', reference: 'John 3:16', styleId: 1, templateKey: 'bible-classic' },
+      { contentType: 'bible', text: 'For God so loved the world.', reference: 'John 3:16', styleId: 1, templateKey: 'bible-classic', hidden: false },
       root
     );
     expect(root.querySelector('.output-text')?.textContent).toBe('For God so loved the world.');
@@ -1964,11 +2601,35 @@ describe('renderState', () => {
 
   it('escapes HTML in the verse text to prevent injection', () => {
     renderState(
-      { contentType: 'song', text: '<script>alert(1)</script>', reference: 'Test', styleId: 1, templateKey: 'song-classic' },
+      { contentType: 'song', text: '<script>alert(1)</script>', reference: 'Test', styleId: 1, templateKey: 'song-classic', hidden: false },
       root
     );
     expect(root.innerHTML).not.toContain('<script>');
     expect(root.querySelector('.output-text')?.textContent).toBe('<script>alert(1)</script>');
+  });
+});
+```
+
+Also `tests/unit/output/fit.test.ts` — 279 canonical KJV verses run past 300 characters
+(Esther 8:9 is 534) and KJV's Sirach 1:0 is 3,133, so the output must shrink to fit rather
+than run off the top of the frame. The search is written against an injected measure
+function so it is testable without a real layout engine:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { fitFontSize } from '../../../src/output/fit.js';
+
+describe('fitFontSize', () => {
+  it('keeps the maximum size when the text already fits', () => {
+    expect(fitFontSize(() => false, { max: 48, min: 24, step: 2 })).toBe(48);
+  });
+
+  it('shrinks until the text fits', () => {
+    expect(fitFontSize((size) => size > 34, { max: 48, min: 24, step: 2 })).toBe(34);
+  });
+
+  it('never goes below the readable floor', () => {
+    expect(fitFontSize(() => true, { max: 48, min: 24, step: 2 })).toBe(24);
   });
 });
 ```
@@ -1999,7 +2660,8 @@ export function escapeHtml(value) {
 }
 
 export function renderState(state, rootEl) {
-  if (!state || !state.contentType) {
+  // `hidden` is the operator's blank-output toggle: keep the selection, show nothing.
+  if (!state || !state.contentType || state.hidden) {
     rootEl.innerHTML = '';
     rootEl.className = 'output-root hidden';
     return;
@@ -2012,24 +2674,56 @@ export function renderState(state, rootEl) {
 }
 ```
 
+- [ ] **Step 4b: Write `src/output/fit.js`**
+
+```js
+/**
+ * Largest font size (px) at which `overflows(size)` is false, stepping down from max.
+ * Kept free of DOM access so it can be unit-tested; output.js supplies the real measure.
+ */
+export function fitFontSize(overflows, { max = 48, min = 24, step = 2 } = {}) {
+  let size = max;
+  while (size > min && overflows(size)) size -= step;
+  return Math.max(size, min);
+}
+```
+
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `npx vitest run tests/unit/output/render.test.ts`
-Expected: PASS (3 tests).
+Run: `npx vitest run tests/unit/output/render.test.ts tests/unit/output/fit.test.ts`
+Expected: PASS (7 tests).
 
 - [ ] **Step 6: Write `src/output/output.js`**
 
 ```js
 import { renderState } from './render.js';
+import { fitFontSize } from './fit.js';
 
 const root = document.getElementById('output-root');
+// Leave the top ~45% of the frame clear: this is a lower third, not a full-screen slide.
+const MAX_HEIGHT_RATIO = 0.55;
+
+let lastState = null;
+
+function render(state) {
+  lastState = state ?? lastState;
+  renderState(lastState, root);
+  const textEl = root.querySelector('.output-text');
+  if (!textEl) return;
+  const maxHeight = window.innerHeight * MAX_HEIGHT_RATIO;
+  const size = fitFontSize((candidate) => {
+    textEl.style.fontSize = `${candidate}px`;
+    return root.scrollHeight > maxHeight;
+  });
+  textEl.style.fontSize = `${size}px`;
+}
 
 function connect() {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${protocol}://${location.host}/ws`);
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data);
-    if (message.type === 'live_update') renderState(message.payload, root);
+    if (message.type === 'live_update') render(message.payload);
   });
   socket.addEventListener('close', () => setTimeout(connect, 1000));
   socket.addEventListener('error', () => socket.close());
@@ -2037,8 +2731,11 @@ function connect() {
 
 fetch('/api/state')
   .then((res) => res.json())
-  .then((state) => renderState(state, root))
+  .then(render)
   .catch(() => {});
+
+// A Browser Source can be resized after the fact; re-fit rather than overflow.
+window.addEventListener('resize', () => render(null));
 
 connect();
 ```
@@ -2062,6 +2759,11 @@ html, body {
   right: 0;
   bottom: 0;
   padding: 32px 48px;
+  /* Hard ceiling so a pathological passage (KJV's Sirach 1:0 is 3,133 chars) can
+     never paint over the whole frame even if fitting hits its floor. */
+  max-height: 60vh;
+  overflow: hidden;
+  box-sizing: border-box;
   opacity: 0;
   transition: opacity 0.4s ease;
 }
@@ -2075,6 +2777,8 @@ html, body {
 }
 
 .output-text {
+  /* Starting size only — output.js shrinks this to fit long verses (Esther 8:9 is
+     534 characters) instead of letting them run off the top of the frame. */
   font-size: 42px;
   font-weight: 600;
   color: #ffffff;
@@ -2151,12 +2855,16 @@ git commit -m "feat: add OBS output page with WebSocket live rendering and prese
 
 **Interfaces:**
 - Consumes: every repository from Tasks 3–4, `createServer`/`ServerHandle` (Task 6), `importOpenlpSongs`/`importOpenlpBible` (Task 5), `LiveState` type (Task 2).
-- Produces: `IpcChannels` (channel name constants, in `src/shared/ipcChannels.ts`) and, from `src/main/ipc/handlers.ts`: `handleSetLiveState(db, server, mainWindow, stagedItemId, verseOrBlockId, styleId): LiveState`, `handleImportOpenlp(db, songsPath, biblePaths): ImportSummary`, `getServerUrls(port): { local: string; lan: string | null }`, and `registerIpcHandlers(db, server, mainWindow, port): void` — the renderer's `window.api` (exposed by `preload.ts`) is the only thing Tasks 9–11 depend on, and its method names/signatures are fixed here.
+- Produces: `IpcChannels` (channel name constants, in `src/shared/ipcChannels.ts`) and, from `src/main/ipc/handlers.ts`: `handleSetLiveState(db, server, mainWindow, stagedItemId, verseOrBlockId, styleId): LiveState`, `handleSetOutputHidden(db, server, mainWindow, hidden): LiveState`, `handleUnstageItem(db, server, mainWindow, stagedItemId): void`, `handleImportOpenlp(db, filePaths): ImportSummary`, `getServerUrls(port): { local: string; lan: string | null }`, and `registerIpcHandlers(db, server, mainWindow, port): void` — the renderer's `window.api` (exposed by `preload.ts`) is the only thing Tasks 9–11 depend on, and its method names/signatures are fixed here.
+- Every live-state mutation goes through one funnel that persists, broadcasts to OBS, and notifies the renderer. Nothing else may write `live_state`.
 
 - [ ] **Step 1: Write `src/shared/ipcChannels.ts`**
 
 ```ts
 export const IpcChannels = {
+  ListTranslations: 'bible:list-translations',
+  GetActiveTranslation: 'bible:get-active-translation',
+  SetActiveTranslation: 'bible:set-active-translation',
   FindBibleBooks: 'bible:find-books',
   GetChaptersForBook: 'bible:get-chapters',
   GetVersesForChapter: 'bible:get-verses',
@@ -2170,6 +2878,7 @@ export const IpcChannels = {
   ReorderStagedItems: 'staged:reorder',
   GetLiveState: 'live:get',
   SetLiveState: 'live:set',
+  SetOutputHidden: 'live:set-hidden',
   GetOutputStyles: 'styles:get',
   SetActiveStyle: 'styles:set-active',
   GetServerUrls: 'server:get-urls',
@@ -2194,9 +2903,16 @@ import { applySchema } from '../../src/main/db/schema';
 import { seedDefaultOutputStyles } from '../../src/main/db/outputStylesRepository';
 import { addStagedItem } from '../../src/main/db/stagedItemsRepository';
 import { createServer, ServerHandle } from '../../src/main/server/server';
-import { handleSetLiveState, handleImportOpenlp, getServerUrls } from '../../src/main/ipc/handlers';
+import { getLiveState } from '../../src/main/db/liveStateRepository';
+import {
+  handleSetLiveState,
+  handleSetOutputHidden,
+  handleUnstageItem,
+  handleImportOpenlp,
+  getServerUrls,
+} from '../../src/main/ipc/handlers';
 import { IpcChannels } from '../../src/shared/ipcChannels';
-import { createFixtureSongsDb } from '../helpers/openlpFixtures';
+import { createFixtureSongsDb, createFixtureBibleDb } from '../helpers/openlpFixtures';
 
 let db: Database.Database;
 let server: ServerHandle;
@@ -2223,8 +2939,47 @@ describe('handleSetLiveState', () => {
   });
 });
 
+describe('handleSetOutputHidden', () => {
+  it('blanks the output and tells both the OBS page and the operator UI', () => {
+    const broadcastSpy = vi.spyOn(server, 'broadcastLiveUpdate');
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+
+    const result = handleSetOutputHidden(db, server, fakeWindow, true);
+
+    expect(result.hidden).toBe(true);
+    expect(broadcastSpy).toHaveBeenCalledOnce();
+    expect(fakeWindow.webContents.send).toHaveBeenCalledWith(IpcChannels.LiveStateChanged, result);
+  });
+});
+
+describe('handleUnstageItem', () => {
+  // Without this, OBS keeps showing a verse the app has forgotten about.
+  it('clears and broadcasts live state when the live item is removed', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const stagedItem = addStagedItem(db, 'song', 1, null);
+    handleSetLiveState(db, server, fakeWindow, stagedItem.id, 5, null);
+    const broadcastSpy = vi.spyOn(server, 'broadcastLiveUpdate');
+
+    handleUnstageItem(db, server, fakeWindow, stagedItem.id);
+
+    expect(getLiveState(db).stagedItemId).toBeNull();
+    expect(broadcastSpy).toHaveBeenCalledOnce();
+  });
+
+  it('does not touch live state when a different item is removed', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const live = addStagedItem(db, 'song', 1, null);
+    const other = addStagedItem(db, 'song', 2, null);
+    handleSetLiveState(db, server, fakeWindow, live.id, 5, null);
+
+    handleUnstageItem(db, server, fakeWindow, other.id);
+
+    expect(getLiveState(db).stagedItemId).toBe(live.id);
+  });
+});
+
 describe('handleImportOpenlp', () => {
-  it('combines results from the songs importer', () => {
+  it('classifies each picked file by its schema and reports per-file results', () => {
     const songsPath = createFixtureSongsDb([
       {
         title: 'Test Song',
@@ -2232,11 +2987,29 @@ describe('handleImportOpenlp', () => {
           '<?xml version="1.0"?><song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[Line one]]></verse></lyrics></song>',
       },
     ]);
+    const biblePath = createFixtureBibleDb(
+      'KJV',
+      [{ id: 43, name: 'John', testamentReferenceId: 2 }],
+      [{ bookId: 43, chapter: 3, verse: 16, text: 'For God so loved the world.' }]
+    );
 
-    const summary = handleImportOpenlp(db, songsPath, []);
+    const summary = handleImportOpenlp(db, [songsPath, biblePath]);
 
-    expect(summary.imported).toBe(1);
     expect(summary.errors).toHaveLength(0);
+    expect(summary.sources.map((s) => s.kind).sort()).toEqual(['bible', 'songs']);
+    expect(summary.sources.find((s) => s.kind === 'songs')?.imported).toBe(1);
+    expect(summary.sources.find((s) => s.kind === 'bible')?.translation).toBe('KJV');
+  });
+
+  it('does not misclassify a bible file just because its path mentions songs', () => {
+    // The old filename heuristic broke on paths like C:\Users\songleader\bibles\KJV.sqlite.
+    const biblePath = createFixtureBibleDb(
+      'KJV',
+      [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }],
+      [{ bookId: 1, chapter: 1, verse: 1, text: 'In the beginning.' }]
+    );
+    const summary = handleImportOpenlp(db, [biblePath]);
+    expect(summary.sources[0].kind).toBe('bible');
   });
 });
 
@@ -2258,6 +3031,7 @@ Expected: FAIL — module not found.
 ```ts
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import os from 'os';
+import path from 'path';
 import Database from 'better-sqlite3';
 import { IpcChannels } from '../../shared/ipcChannels';
 import * as bibleRepo from '../db/bibleRepository';
@@ -2265,10 +3039,23 @@ import * as songRepo from '../db/songRepository';
 import * as stagedRepo from '../db/stagedItemsRepository';
 import * as liveRepo from '../db/liveStateRepository';
 import * as stylesRepo from '../db/outputStylesRepository';
+import * as settingsRepo from '../db/settingsRepository';
 import { importOpenlpSongs } from '../import/openlpSongsImporter';
 import { importOpenlpBible } from '../import/openlpBibleImporter';
+import { detectOpenlpFile } from '../import/detectOpenlpFile';
 import { ServerHandle } from '../server/server';
-import { ContentType, ImportSummary, LiveState, StagedItemType } from '../../shared/types';
+import { ContentType, ImportSourceSummary, ImportSummary, LiveState, StagedItemType } from '../../shared/types';
+
+/** Single funnel for every live-state change: persist, push to OBS, push to the UI. */
+function publishLiveState(
+  server: ServerHandle,
+  mainWindow: BrowserWindow,
+  state: LiveState
+): LiveState {
+  server.broadcastLiveUpdate();
+  mainWindow.webContents.send(IpcChannels.LiveStateChanged, state);
+  return state;
+}
 
 export function handleSetLiveState(
   db: Database.Database,
@@ -2278,22 +3065,57 @@ export function handleSetLiveState(
   verseOrBlockId: number | null,
   styleId: number | null
 ): LiveState {
-  const state = liveRepo.setLiveState(db, stagedItemId, verseOrBlockId, styleId);
-  server.broadcastLiveUpdate();
-  mainWindow.webContents.send(IpcChannels.LiveStateChanged, state);
-  return state;
+  return publishLiveState(server, mainWindow, liveRepo.setLiveState(db, stagedItemId, verseOrBlockId, styleId));
 }
 
-export function handleImportOpenlp(db: Database.Database, songsPath: string | null, biblePaths: string[]): ImportSummary {
-  const combined: ImportSummary = { imported: 0, skipped: 0, errors: [] };
-  if (songsPath) {
-    const result = importOpenlpSongs(db, songsPath);
-    combined.imported += result.imported;
-    combined.skipped += result.skipped;
-    combined.errors.push(...result.errors);
-  }
-  for (const biblePath of biblePaths) {
-    const result = importOpenlpBible(db, biblePath);
+export function handleSetOutputHidden(
+  db: Database.Database,
+  server: ServerHandle,
+  mainWindow: BrowserWindow,
+  hidden: boolean
+): LiveState {
+  return publishLiveState(server, mainWindow, liveRepo.setOutputHidden(db, hidden));
+}
+
+/**
+ * Removing the staged item that is currently live must also clear live state and
+ * broadcast it — otherwise OBS keeps displaying content the app no longer tracks,
+ * and only blanks the next time the Browser Source happens to reconnect.
+ */
+export function handleUnstageItem(
+  db: Database.Database,
+  server: ServerHandle,
+  mainWindow: BrowserWindow,
+  stagedItemId: number
+): void {
+  const wasLive = liveRepo.getLiveState(db).stagedItemId === stagedItemId;
+  stagedRepo.removeStagedItem(db, stagedItemId);
+  if (wasLive) publishLiveState(server, mainWindow, liveRepo.clearLiveState(db));
+}
+
+/**
+ * Files are classified by looking inside them, never by filename — a bible file under
+ * `C:\Users\songleader\...` would otherwise be imported as a song library.
+ */
+export function handleImportOpenlp(db: Database.Database, filePaths: string[]): ImportSummary {
+  const combined: ImportSummary = { sources: [], imported: 0, skipped: 0, errors: [] };
+  for (const filePath of filePaths) {
+    const kind = detectOpenlpFile(filePath);
+    let result: ImportSourceSummary;
+    if (kind === 'songs') {
+      result = importOpenlpSongs(db, filePath);
+    } else if (kind === 'bible') {
+      result = importOpenlpBible(db, filePath);
+    } else {
+      result = {
+        file: path.basename(filePath),
+        kind: 'bible',
+        imported: 0,
+        skipped: 1,
+        errors: [{ identifier: path.basename(filePath), reason: 'not an OpenLP song or bible database' }],
+      };
+    }
+    combined.sources.push(result);
     combined.imported += result.imported;
     combined.skipped += result.skipped;
     combined.errors.push(...result.errors);
@@ -2320,12 +3142,20 @@ export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   port: number
 ): void {
-  ipcMain.handle(IpcChannels.FindBibleBooks, (_e, query: string) => bibleRepo.findBooksByName(db, query));
-  ipcMain.handle(IpcChannels.GetChaptersForBook, (_e, bookId: number, translation: string) =>
-    bibleRepo.getChaptersForBook(db, bookId, translation)
+  ipcMain.handle(IpcChannels.ListTranslations, () => bibleRepo.listTranslations(db));
+  ipcMain.handle(IpcChannels.GetActiveTranslation, () =>
+    settingsRepo.getActiveTranslation(db, bibleRepo.listTranslations(db))
   );
-  ipcMain.handle(IpcChannels.GetVersesForChapter, (_e, bookId: number, chapter: number, translation: string) =>
-    bibleRepo.getVersesForChapter(db, bookId, chapter, translation)
+  ipcMain.handle(IpcChannels.SetActiveTranslation, (_e, translation: string) =>
+    settingsRepo.setSetting(db, settingsRepo.SETTING_TRANSLATION, translation)
+  );
+  ipcMain.handle(IpcChannels.FindBibleBooks, (_e, query: string, translation: string) =>
+    bibleRepo.findBooksByName(db, query, translation)
+  );
+  // bookId here is always bible_books.id, which already carries its translation.
+  ipcMain.handle(IpcChannels.GetChaptersForBook, (_e, bookId: number) => bibleRepo.getChaptersForBook(db, bookId));
+  ipcMain.handle(IpcChannels.GetVersesForChapter, (_e, bookId: number, chapter: number) =>
+    bibleRepo.getVersesForChapter(db, bookId, chapter)
   );
   ipcMain.handle(IpcChannels.SearchBibleContent, (_e, query: string, translation: string) =>
     bibleRepo.searchBibleContent(db, query, translation)
@@ -2337,13 +3167,16 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannels.StageItem, (_e, type: StagedItemType, refId: number, chapter: number | null) =>
     stagedRepo.addStagedItem(db, type, refId, chapter)
   );
-  ipcMain.handle(IpcChannels.UnstageItem, (_e, id: number) => stagedRepo.removeStagedItem(db, id));
+  ipcMain.handle(IpcChannels.UnstageItem, (_e, id: number) => handleUnstageItem(db, server, mainWindow, id));
   ipcMain.handle(IpcChannels.ReorderStagedItems, (_e, orderedIds: number[]) => stagedRepo.reorderStagedItems(db, orderedIds));
   ipcMain.handle(IpcChannels.GetLiveState, () => liveRepo.getLiveState(db));
   ipcMain.handle(
     IpcChannels.SetLiveState,
     (_e, stagedItemId: number | null, verseOrBlockId: number | null, styleId: number | null) =>
       handleSetLiveState(db, server, mainWindow, stagedItemId, verseOrBlockId, styleId)
+  );
+  ipcMain.handle(IpcChannels.SetOutputHidden, (_e, hidden: boolean) =>
+    handleSetOutputHidden(db, server, mainWindow, hidden)
   );
   ipcMain.handle(IpcChannels.GetOutputStyles, (_e, contentType: ContentType) => stylesRepo.getStyles(db, contentType));
   ipcMain.handle(IpcChannels.SetActiveStyle, (_e, contentType: ContentType, styleId: number) =>
@@ -2357,16 +3190,14 @@ export function registerIpcHandlers(
     });
     return result.canceled ? [] : result.filePaths;
   });
-  ipcMain.handle(IpcChannels.ImportOpenlp, (_e, songsPath: string | null, biblePaths: string[]) =>
-    handleImportOpenlp(db, songsPath, biblePaths)
-  );
+  ipcMain.handle(IpcChannels.ImportOpenlp, (_e, filePaths: string[]) => handleImportOpenlp(db, filePaths));
 }
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run tests/integration/ipcHandlers.test.ts`
-Expected: PASS (3 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 6: Rewrite `src/main/index.ts`**
 
@@ -2390,12 +3221,15 @@ async function createWindow() {
   try {
     port = await server.start(DEFAULT_PORT);
   } catch (err) {
-    dialog.showErrorBox(
-      'ServiceFlow could not start its output server',
-      `Port ${DEFAULT_PORT} is unavailable (${(err as Error).message}). ` +
-        'Close whatever is using it, or change the port in Settings after relaunching.'
-    );
+    // v1 has no port field in Settings, so never tell the operator to change one.
+    // Fall back to a free port and point them at the (new) URL Settings will show.
     port = await server.start(0);
+    dialog.showErrorBox(
+      'ServiceFlow is using a different port',
+      `Port ${DEFAULT_PORT} was unavailable (${(err as Error).message}), so ServiceFlow started on ` +
+        `port ${port} instead.\n\nThe OBS Browser Source URL has changed — open Settings, copy the ` +
+        'URL shown there, and paste it into your OBS Browser Source.'
+    );
   }
 
   const mainWindow = new BrowserWindow({
@@ -2432,11 +3266,15 @@ import { IpcChannels } from '../shared/ipcChannels';
 import type { ContentType, LiveState, StagedItemType } from '../shared/types';
 
 contextBridge.exposeInMainWorld('api', {
-  findBibleBooks: (query: string) => ipcRenderer.invoke(IpcChannels.FindBibleBooks, query),
-  getChaptersForBook: (bookId: number, translation: string) =>
-    ipcRenderer.invoke(IpcChannels.GetChaptersForBook, bookId, translation),
-  getVersesForChapter: (bookId: number, chapter: number, translation: string) =>
-    ipcRenderer.invoke(IpcChannels.GetVersesForChapter, bookId, chapter, translation),
+  listTranslations: () => ipcRenderer.invoke(IpcChannels.ListTranslations),
+  getActiveTranslation: () => ipcRenderer.invoke(IpcChannels.GetActiveTranslation),
+  setActiveTranslation: (translation: string) =>
+    ipcRenderer.invoke(IpcChannels.SetActiveTranslation, translation),
+  findBibleBooks: (query: string, translation: string) =>
+    ipcRenderer.invoke(IpcChannels.FindBibleBooks, query, translation),
+  getChaptersForBook: (bookId: number) => ipcRenderer.invoke(IpcChannels.GetChaptersForBook, bookId),
+  getVersesForChapter: (bookId: number, chapter: number) =>
+    ipcRenderer.invoke(IpcChannels.GetVersesForChapter, bookId, chapter),
   searchBibleContent: (query: string, translation: string) =>
     ipcRenderer.invoke(IpcChannels.SearchBibleContent, query, translation),
   findSongsByTitle: (query: string) => ipcRenderer.invoke(IpcChannels.FindSongsByTitle, query),
@@ -2450,13 +3288,13 @@ contextBridge.exposeInMainWorld('api', {
   getLiveState: () => ipcRenderer.invoke(IpcChannels.GetLiveState),
   setLiveState: (stagedItemId: number | null, verseOrBlockId: number | null, styleId: number | null) =>
     ipcRenderer.invoke(IpcChannels.SetLiveState, stagedItemId, verseOrBlockId, styleId),
+  setOutputHidden: (hidden: boolean) => ipcRenderer.invoke(IpcChannels.SetOutputHidden, hidden),
   getOutputStyles: (contentType: ContentType) => ipcRenderer.invoke(IpcChannels.GetOutputStyles, contentType),
   setActiveStyle: (contentType: ContentType, styleId: number) =>
     ipcRenderer.invoke(IpcChannels.SetActiveStyle, contentType, styleId),
   getServerUrls: () => ipcRenderer.invoke(IpcChannels.GetServerUrls),
   pickOpenlpFiles: () => ipcRenderer.invoke(IpcChannels.PickOpenlpFiles),
-  importOpenlp: (songsPath: string | null, biblePaths: string[]) =>
-    ipcRenderer.invoke(IpcChannels.ImportOpenlp, songsPath, biblePaths),
+  importOpenlp: (filePaths: string[]) => ipcRenderer.invoke(IpcChannels.ImportOpenlp, filePaths),
   onLiveStateChanged: (callback: (state: LiveState) => void) => {
     const listener = (_event: unknown, state: LiveState) => callback(state);
     ipcRenderer.on(IpcChannels.LiveStateChanged, listener);
@@ -2489,7 +3327,8 @@ git commit -m "feat: wire Electron main process, embedded server, and IPC API"
 
 **Interfaces:**
 - Consumes: `window.api.*` methods exposed by `preload.ts` (Task 8); `BibleBook`, `BibleSearchResult`, `Song`, `SongSearchResult`, `StagedItemType` types (Task 2).
-- Produces: the global `Window.api: ServiceFlowApi` type declaration (so every component can call `window.api.*` directly with full typing, no wrapper needed) and `<SearchPanel onStaged={() => void} />` — consumed by `App.tsx` in Task 11.
+- Produces: the global `Window.api: ServiceFlowApi` type declaration (so every component can call `window.api.*` directly with full typing, no wrapper needed) and `<SearchPanel translation onStaged={(item, focusEntryId) => void} />` — consumed by `App.tsx` in Task 11.
+- No component may hardcode a translation; `App` owns it and passes it down.
 
 - [ ] **Step 1: Write `src/renderer/window.d.ts`**
 
@@ -2497,9 +3336,13 @@ git commit -m "feat: wire Electron main process, embedded server, and IPC API"
 import type { BibleBook, BibleSearchResult, ContentType, LiveState, OutputStyle, Song, SongBlock, SongSearchResult, StagedItem, StagedItemType, ImportSummary, BibleVerse } from '../shared/types';
 
 export interface ServiceFlowApi {
-  findBibleBooks(query: string): Promise<BibleBook[]>;
-  getChaptersForBook(bookId: number, translation: string): Promise<number[]>;
-  getVersesForChapter(bookId: number, chapter: number, translation: string): Promise<BibleVerse[]>;
+  listTranslations(): Promise<string[]>;
+  getActiveTranslation(): Promise<string | null>;
+  setActiveTranslation(translation: string): Promise<void>;
+  findBibleBooks(query: string, translation: string): Promise<BibleBook[]>;
+  /** bookId is always BibleBook.id — never an OpenLP source book id. */
+  getChaptersForBook(bookId: number): Promise<number[]>;
+  getVersesForChapter(bookId: number, chapter: number): Promise<BibleVerse[]>;
   searchBibleContent(query: string, translation: string): Promise<BibleSearchResult[]>;
   findSongsByTitle(query: string): Promise<Song[]>;
   getBlocksForSong(songId: number): Promise<SongBlock[]>;
@@ -2510,11 +3353,12 @@ export interface ServiceFlowApi {
   reorderStagedItems(orderedIds: number[]): Promise<void>;
   getLiveState(): Promise<LiveState>;
   setLiveState(stagedItemId: number | null, verseOrBlockId: number | null, styleId: number | null): Promise<LiveState>;
+  setOutputHidden(hidden: boolean): Promise<LiveState>;
   getOutputStyles(contentType: ContentType): Promise<OutputStyle[]>;
   setActiveStyle(contentType: ContentType, styleId: number): Promise<void>;
   getServerUrls(): Promise<{ local: string; lan: string | null }>;
   pickOpenlpFiles(): Promise<string[]>;
-  importOpenlp(songsPath: string | null, biblePaths: string[]): Promise<ImportSummary>;
+  importOpenlp(filePaths: string[]): Promise<ImportSummary>;
   onLiveStateChanged(callback: (state: LiveState) => void): () => void;
 }
 
@@ -2534,36 +3378,51 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SearchPanel from '../../src/renderer/components/SearchPanel';
 
+// id 7 is ServiceFlow's own book id; 43 is the source id it came from. The component
+// must always pass the former around.
+const JOHN = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT', sortOrder: 43 };
+
 beforeEach(() => {
   (window as any).api = {
-    findBibleBooks: vi.fn().mockResolvedValue([{ id: 43, name: 'John', testament: 'NT', sortOrder: 43 }]),
+    findBibleBooks: vi.fn().mockResolvedValue([JOHN]),
     getChaptersForBook: vi.fn().mockResolvedValue([1, 2, 3]),
     searchBibleContent: vi.fn().mockResolvedValue([]),
     findSongsByTitle: vi.fn().mockResolvedValue([{ id: 1, title: 'Amazing Grace', ccliNumber: null }]),
     searchSongContent: vi.fn().mockResolvedValue([]),
-    stageItem: vi.fn().mockResolvedValue({ id: 1, type: 'bible', refId: 43, chapter: 3, position: 0, label: 'John 3' }),
+    stageItem: vi
+      .fn()
+      .mockResolvedValue({ id: 1, type: 'bible', refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' }),
   };
 });
 
 describe('SearchPanel', () => {
   it('searches bible books by typed name and stages a chapter on click', async () => {
     const onStaged = vi.fn();
-    render(<SearchPanel onStaged={onStaged} />);
+    render(<SearchPanel translation="KJV" onStaged={onStaged} />);
 
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'joh' } });
-    await waitFor(() => expect(window.api.findBibleBooks).toHaveBeenCalledWith('joh'));
+    await waitFor(() => expect(window.api.findBibleBooks).toHaveBeenCalledWith('joh', 'KJV'));
 
     fireEvent.click(await screen.findByText('John'));
+    await waitFor(() => expect(window.api.getChaptersForBook).toHaveBeenCalledWith(7));
     fireEvent.click(await screen.findByText('3'));
 
-    await waitFor(() => expect(window.api.stageItem).toHaveBeenCalledWith('bible', 43, 3));
-    expect(onStaged).toHaveBeenCalled();
+    await waitFor(() => expect(window.api.stageItem).toHaveBeenCalledWith('bible', 7, 3));
+    expect(onStaged).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), null);
+  });
+
+  it('searches the translation it is given, not a hardcoded one', async () => {
+    render(<SearchPanel translation="New King James Version (NKJV)" onStaged={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'joh' } });
+    await waitFor(() =>
+      expect(window.api.findBibleBooks).toHaveBeenCalledWith('joh', 'New King James Version (NKJV)')
+    );
   });
 
   it('switches to song mode and stages a song by title', async () => {
     (window.api.stageItem as any).mockResolvedValue({ id: 2, type: 'song', refId: 1, chapter: null, position: 0, label: 'Amazing Grace' });
     const onStaged = vi.fn();
-    render(<SearchPanel onStaged={onStaged} />);
+    render(<SearchPanel translation="KJV" onStaged={onStaged} />);
 
     fireEvent.click(screen.getByRole('button', { name: /songs/i }));
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'amaz' } });
@@ -2572,11 +3431,32 @@ describe('SearchPanel', () => {
     fireEvent.click(await screen.findByText('Amazing Grace'));
 
     await waitFor(() => expect(window.api.stageItem).toHaveBeenCalledWith('song', 1, null));
-    expect(onStaged).toHaveBeenCalled();
+    expect(onStaged).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }), null);
+  });
+
+  // The spec requires a content-search hit to jump straight to the matched verse.
+  it('reports the matched verse id so the content pane can jump to it', async () => {
+    (window.api.searchBibleContent as any).mockResolvedValue([
+      {
+        verse: { id: 900, bookId: 7, chapter: 3, verse: 16, text: 'For God so loved the world.' },
+        bookName: 'John',
+        translation: 'KJV',
+      },
+    ]);
+    const onStaged = vi.fn();
+    render(<SearchPanel translation="KJV" onStaged={onStaged} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /content search/i }));
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'loved' } });
+
+    fireEvent.click(await screen.findByText(/John 3:16/));
+
+    await waitFor(() => expect(window.api.stageItem).toHaveBeenCalledWith('bible', 7, 3));
+    expect(onStaged).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 900);
   });
 
   it('shows a "no matches" state when content search returns nothing', async () => {
-    render(<SearchPanel onStaged={vi.fn()} />);
+    render(<SearchPanel translation="KJV" onStaged={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /content search/i }));
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'zzz' } });
@@ -2596,17 +3476,25 @@ Expected: FAIL — module not found.
 
 ```tsx
 import { useEffect, useState } from 'react';
-import type { BibleBook } from '../../shared/types';
+import type { BibleBook, StagedItem } from '../../shared/types';
 
 type Mode = 'bible' | 'song';
 type SubMode = 'browse' | 'content';
-const TRANSLATION = 'KJV';
+// Live-as-you-type against 36k+ verses: wait for a pause before hitting FTS.
+const SEARCH_DEBOUNCE_MS = 150;
 
 interface Props {
-  onStaged: () => void;
+  /** The active translation, owned by App. Never hardcode one here. */
+  translation: string;
+  /**
+   * Called after an item is staged. `focusEntryId` is the verse/block the operator
+   * matched in content search, so the content pane can jump straight to it; null when
+   * they staged a whole chapter or song.
+   */
+  onStaged: (item: StagedItem, focusEntryId: number | null) => void;
 }
 
-export default function SearchPanel({ onStaged }: Props) {
+export default function SearchPanel({ translation, onStaged }: Props) {
   const [mode, setMode] = useState<Mode>('bible');
   const [subMode, setSubMode] = useState<SubMode>('browse');
   const [query, setQuery] = useState('');
@@ -2625,34 +3513,43 @@ export default function SearchPanel({ onStaged }: Props) {
       setSongs([]);
       return;
     }
-    if (subMode === 'browse' && mode === 'bible') {
-      window.api.findBibleBooks(query).then(setBooks);
-    } else if (subMode === 'browse' && mode === 'song') {
-      window.api.findSongsByTitle(query).then(setSongs);
-    } else if (subMode === 'content' && mode === 'bible') {
-      window.api.searchBibleContent(query, TRANSLATION).then((results) =>
-        setContentResults(
-          results.map((r) => ({
-            label: `${r.bookName} ${r.verse.chapter}:${r.verse.verse} — ${r.verse.text}`,
-            onSelect: () => window.api.stageItem('bible', r.verse.bookId, r.verse.chapter).then(onStaged),
-          }))
-        )
-      );
-    } else {
-      window.api.searchSongContent(query).then((results) =>
-        setContentResults(
-          results.map((r) => ({
-            label: `${r.songTitle} (${r.block.label}) — ${r.block.text}`,
-            onSelect: () => window.api.stageItem('song', r.block.songId, null).then(onStaged),
-          }))
-        )
-      );
-    }
-  }, [query, mode, subMode]);
+    const handle = setTimeout(() => {
+      if (subMode === 'browse' && mode === 'bible') {
+        window.api.findBibleBooks(query, translation).then(setBooks);
+      } else if (subMode === 'browse' && mode === 'song') {
+        window.api.findSongsByTitle(query).then(setSongs);
+      } else if (subMode === 'content' && mode === 'bible') {
+        window.api.searchBibleContent(query, translation).then((results) =>
+          setContentResults(
+            results.map((r) => ({
+              label: `${r.bookName} ${r.verse.chapter}:${r.verse.verse} — ${r.verse.text}`,
+              // Stage the chapter, then hand back the matched verse so the content pane
+              // can scroll to and highlight it (staging alone is not "jump to the verse").
+              onSelect: () =>
+                window.api
+                  .stageItem('bible', r.verse.bookId, r.verse.chapter)
+                  .then((item) => onStaged(item, r.verse.id)),
+            }))
+          )
+        );
+      } else {
+        window.api.searchSongContent(query).then((results) =>
+          setContentResults(
+            results.map((r) => ({
+              label: `${r.songTitle} (${r.block.label}) — ${r.block.text}`,
+              onSelect: () =>
+                window.api.stageItem('song', r.block.songId, null).then((item) => onStaged(item, r.block.id)),
+            }))
+          )
+        );
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [query, mode, subMode, translation]);
 
   async function selectBook(book: BibleBook) {
     setSelectedBook(book);
-    setChapters(await window.api.getChaptersForBook(book.id, TRANSLATION));
+    setChapters(await window.api.getChaptersForBook(book.id));
   }
 
   return (
@@ -2693,7 +3590,9 @@ export default function SearchPanel({ onStaged }: Props) {
         <ul>
           {chapters.map((c) => (
             <li key={c}>
-              <button onClick={() => window.api.stageItem('bible', selectedBook.id, c).then(onStaged)}>{c}</button>
+              <button onClick={() => window.api.stageItem('bible', selectedBook.id, c).then((item) => onStaged(item, null))}>
+                {c}
+              </button>
             </li>
           ))}
         </ul>
@@ -2703,7 +3602,9 @@ export default function SearchPanel({ onStaged }: Props) {
           {songs.length === 0 && query.trim() !== '' && <li>No matches</li>}
           {songs.map((s) => (
             <li key={s.id}>
-              <button onClick={() => window.api.stageItem('song', s.id, null).then(onStaged)}>{s.title}</button>
+              <button onClick={() => window.api.stageItem('song', s.id, null).then((item) => onStaged(item, null))}>
+                {s.title}
+              </button>
             </li>
           ))}
         </ul>
@@ -2726,7 +3627,7 @@ export default function SearchPanel({ onStaged }: Props) {
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run tests/component/SearchPanel.test.tsx`
-Expected: PASS (3 tests).
+Expected: PASS (5 tests).
 
 - [ ] **Step 6: Typecheck and commit**
 
@@ -2750,7 +3651,8 @@ git commit -m "feat: add typed window.api declaration and search panel (browse +
 
 **Interfaces:**
 - Consumes: `window.api.getStagedItems/unstageItem/reorderStagedItems/getVersesForChapter/getBlocksForSong/setLiveState/onLiveStateChanged` (Task 8/9); `StagedItem`, `BibleVerse`, `SongBlock`, `LiveState` types (Task 2).
-- Produces: `<StagedList items refreshToken onSelectActive={(item: StagedItem) => void} />`, `<ContentPane activeItem={StagedItem | null} liveState={LiveState} onLive={() => void} />`, `<LiveBanner liveState={LiveState} />` — all consumed by `App.tsx` in Task 11.
+- Produces: `<StagedList items onSelectActive={(item: StagedItem) => void} onChanged={() => void} />`, `<ContentPane activeItem={StagedItem | null} liveState={LiveState} focusEntryId={number | null} onLive={() => void} />`, `<LiveBanner liveState={LiveState} />` — all consumed by `App.tsx` in Task 11.
+- `ContentPane` binds its key handler to its own element, never to `window`. `LiveBanner` renders `liveState.reference`, never a row id.
 
 - [ ] **Step 1: Write the failing StagedList test**
 
@@ -2762,7 +3664,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import StagedList from '../../src/renderer/components/StagedList';
 
 const items = [
-  { id: 1, type: 'bible' as const, refId: 43, chapter: 3, position: 0, label: 'John 3' },
+  { id: 1, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' },
   { id: 2, type: 'song' as const, refId: 1, chapter: null, position: 1, label: 'Amazing Grace' },
 ];
 
@@ -2776,14 +3678,14 @@ beforeEach(() => {
 describe('StagedList', () => {
   it('renders every staged item label', () => {
     render(<StagedList items={items} onSelectActive={vi.fn()} onChanged={vi.fn()} />);
-    expect(screen.getByText('John 3')).toBeInTheDocument();
+    expect(screen.getByText('John 3 (KJV)')).toBeInTheDocument();
     expect(screen.getByText('Amazing Grace')).toBeInTheDocument();
   });
 
   it('calls onSelectActive when an item is clicked', () => {
     const onSelectActive = vi.fn();
     render(<StagedList items={items} onSelectActive={onSelectActive} onChanged={vi.fn()} />);
-    fireEvent.click(screen.getByText('John 3'));
+    fireEvent.click(screen.getByText('John 3 (KJV)'));
     expect(onSelectActive).toHaveBeenCalledWith(items[0]);
   });
 
@@ -2806,40 +3708,62 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ContentPane from '../../src/renderer/components/ContentPane';
 
-const bibleItem = { id: 1, type: 'bible' as const, refId: 43, chapter: 3, position: 0, label: 'John 3' };
-const liveState = { stagedItemId: null, verseOrBlockId: null, styleId: null, updatedAt: '' };
+const bibleItem = { id: 1, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' };
+const liveState = { stagedItemId: null, verseOrBlockId: null, styleId: null, hidden: false, updatedAt: '', reference: null };
 
 beforeEach(() => {
   (window as any).api = {
     getVersesForChapter: vi.fn().mockResolvedValue([
-      { id: 100, bookId: 43, chapter: 3, verse: 16, text: 'For God so loved the world.', translation: 'KJV' },
-      { id: 101, bookId: 43, chapter: 3, verse: 17, text: 'For God sent not his Son to condemn.', translation: 'KJV' },
+      { id: 100, bookId: 7, chapter: 3, verse: 16, text: 'For God so loved the world.' },
+      { id: 101, bookId: 7, chapter: 3, verse: 17, text: 'For God sent not his Son to condemn.' },
     ]),
     setLiveState: vi.fn().mockResolvedValue({}),
   };
 });
 
+function pane() {
+  return screen.getByRole('list', { name: /content/i });
+}
+
 describe('ContentPane', () => {
   it('lists verses for the active bible item', async () => {
-    render(<ContentPane activeItem={bibleItem} liveState={liveState} onLive={vi.fn()} />);
+    render(<ContentPane activeItem={bibleItem} liveState={liveState} focusEntryId={null} onLive={vi.fn()} />);
     expect(await screen.findByText(/For God so loved the world/)).toBeInTheDocument();
     expect(await screen.findByText(/For God sent not his Son/)).toBeInTheDocument();
+    expect(window.api.getVersesForChapter).toHaveBeenCalledWith(7, 3);
   });
 
   it('sets live state when a verse is clicked', async () => {
     const onLive = vi.fn();
-    render(<ContentPane activeItem={bibleItem} liveState={liveState} onLive={onLive} />);
+    render(<ContentPane activeItem={bibleItem} liveState={liveState} focusEntryId={null} onLive={onLive} />);
     fireEvent.click(await screen.findByText(/For God so loved the world/));
     await waitFor(() => expect(window.api.setLiveState).toHaveBeenCalledWith(1, 100, null));
     expect(onLive).toHaveBeenCalled();
   });
 
-  it('moves live to the next verse on ArrowDown when a verse is already live', async () => {
-    const liveOnFirst = { stagedItemId: 1, verseOrBlockId: 100, styleId: null, updatedAt: '' };
-    render(<ContentPane activeItem={bibleItem} liveState={liveOnFirst} onLive={vi.fn()} />);
+  it('moves live to the next verse on ArrowDown when the pane has focus', async () => {
+    const liveOnFirst = { ...liveState, stagedItemId: 1, verseOrBlockId: 100, reference: 'John 3:16' };
+    render(<ContentPane activeItem={bibleItem} liveState={liveOnFirst} focusEntryId={null} onLive={vi.fn()} />);
     await screen.findByText(/For God so loved the world/);
-    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    fireEvent.keyDown(pane(), { key: 'ArrowDown' });
     await waitFor(() => expect(window.api.setLiveState).toHaveBeenCalledWith(1, 101, null));
+  });
+
+  // An arrow key pressed while the operator is typing in the search box must never
+  // change what the congregation is looking at.
+  it('ignores arrow keys pressed outside the content pane', async () => {
+    const liveOnFirst = { ...liveState, stagedItemId: 1, verseOrBlockId: 100, reference: 'John 3:16' };
+    render(<ContentPane activeItem={bibleItem} liveState={liveOnFirst} focusEntryId={null} onLive={vi.fn()} />);
+    await screen.findByText(/For God so loved the world/);
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+    expect(window.api.setLiveState).not.toHaveBeenCalled();
+  });
+
+  it('highlights the verse a content search matched without putting it live', async () => {
+    render(<ContentPane activeItem={bibleItem} liveState={liveState} focusEntryId={101} onLive={vi.fn()} />);
+    const match = await screen.findByText(/For God sent not his Son/);
+    await waitFor(() => expect(match.closest('button')).toHaveAttribute('data-matched', 'true'));
+    expect(window.api.setLiveState).not.toHaveBeenCalled();
   });
 });
 ```
@@ -2882,20 +3806,21 @@ export default function StagedList({ items, onSelectActive, onChanged }: Props) 
 - [ ] **Step 5: Write `src/renderer/components/ContentPane.tsx`**
 
 ```tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { BibleVerse, LiveState, SongBlock, StagedItem } from '../../shared/types';
-
-const TRANSLATION = 'KJV';
 
 interface Props {
   activeItem: StagedItem | null;
   liveState: LiveState;
+  /** Verse/block a content search matched: scroll to and highlight it, do NOT go live. */
+  focusEntryId: number | null;
   onLive: () => void;
 }
 
-export default function ContentPane({ activeItem, liveState, onLive }: Props) {
+export default function ContentPane({ activeItem, liveState, focusEntryId, onLive }: Props) {
   const [verses, setVerses] = useState<BibleVerse[]>([]);
   const [blocks, setBlocks] = useState<SongBlock[]>([]);
+  const paneRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     if (!activeItem) {
@@ -2903,8 +3828,9 @@ export default function ContentPane({ activeItem, liveState, onLive }: Props) {
       setBlocks([]);
       return;
     }
+    // refId is a bible_books.id, so the translation is already baked in.
     if (activeItem.type === 'bible' && activeItem.chapter != null) {
-      window.api.getVersesForChapter(activeItem.refId, activeItem.chapter, TRANSLATION).then(setVerses);
+      window.api.getVersesForChapter(activeItem.refId, activeItem.chapter).then(setVerses);
       setBlocks([]);
     } else if (activeItem.type === 'song') {
       window.api.getBlocksForSong(activeItem.refId).then(setBlocks);
@@ -2912,48 +3838,61 @@ export default function ContentPane({ activeItem, liveState, onLive }: Props) {
     }
   }, [activeItem]);
 
+  useEffect(() => {
+    if (focusEntryId == null) return;
+    paneRef.current
+      ?.querySelector(`[data-entry-id="${focusEntryId}"]`)
+      ?.scrollIntoView({ block: 'center' });
+  }, [focusEntryId, verses, blocks]);
+
   function goLive(id: number) {
     if (!activeItem) return;
     window.api.setLiveState(activeItem.id, id, null).then(onLive);
   }
 
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (!activeItem || liveState.stagedItemId !== activeItem.id || liveState.verseOrBlockId == null) return;
-      const list = activeItem.type === 'bible' ? verses : blocks;
-      const index = list.findIndex((entry) => entry.id === liveState.verseOrBlockId);
-      if (index === -1) return;
-      if (e.key === 'ArrowDown' && index < list.length - 1) goLive(list[index + 1].id);
-      if (e.key === 'ArrowUp' && index > 0) goLive(list[index - 1].id);
+  /**
+   * Bound to the pane element, not to `window`. The spec requires arrow keys to steer
+   * the output only when the content pane has focus — a global listener would let an
+   * arrow key typed in the search box change what is on the stream.
+   */
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (!activeItem || liveState.stagedItemId !== activeItem.id || liveState.verseOrBlockId == null) return;
+    const list = activeItem.type === 'bible' ? verses : blocks;
+    const index = list.findIndex((entry) => entry.id === liveState.verseOrBlockId);
+    if (index === -1) return;
+    if (e.key === 'ArrowDown' && index < list.length - 1) {
+      e.preventDefault();
+      goLive(list[index + 1].id);
     }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeItem, liveState, verses, blocks]);
+    if (e.key === 'ArrowUp' && index > 0) {
+      e.preventDefault();
+      goLive(list[index - 1].id);
+    }
+  }
 
   if (!activeItem) return <div>No item selected</div>;
 
   const isLiveId = (id: number) => liveState.stagedItemId === activeItem.id && liveState.verseOrBlockId === id;
-
-  if (activeItem.type === 'bible') {
-    return (
-      <ul>
-        {verses.map((v) => (
-          <li key={v.id}>
-            <button onClick={() => goLive(v.id)} aria-pressed={isLiveId(v.id)}>
-              {v.verse}. {v.text}
-            </button>
-          </li>
-        ))}
-      </ul>
-    );
-  }
+  const entries =
+    activeItem.type === 'bible'
+      ? verses.map((v) => ({ id: v.id, text: `${v.verse}. ${v.text}` }))
+      : blocks.map((b) => ({ id: b.id, text: `${b.label}: ${b.text}` }));
 
   return (
-    <ul>
-      {blocks.map((b) => (
-        <li key={b.id}>
-          <button onClick={() => goLive(b.id)} aria-pressed={isLiveId(b.id)}>
-            {b.label}: {b.text}
+    <ul ref={paneRef} role="list" aria-label="Content" tabIndex={0} onKeyDown={onKeyDown}>
+      {entries.map((entry) => (
+        <li key={entry.id}>
+          <button
+            data-entry-id={entry.id}
+            data-matched={focusEntryId === entry.id ? 'true' : undefined}
+            aria-pressed={isLiveId(entry.id)}
+            onClick={(e) => {
+              // Keep focus in the pane so the arrow keys work immediately afterwards.
+              e.currentTarget.closest('ul')?.focus();
+              goLive(entry.id);
+            }}
+          >
+            {entry.text}
           </button>
         </li>
       ))}
@@ -2965,12 +3904,11 @@ export default function ContentPane({ activeItem, liveState, onLive }: Props) {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/component/StagedList.test.tsx tests/component/ContentPane.test.tsx`
-Expected: PASS (6 tests).
+Expected: PASS (8 tests).
 
 - [ ] **Step 7: Write `src/renderer/components/LiveBanner.tsx`** (no test — trivial presentational component; covered indirectly by the App smoke test in Task 11)
 
 ```tsx
-import { useEffect, useState } from 'react';
 import type { LiveState } from '../../shared/types';
 
 interface Props {
@@ -2978,17 +3916,20 @@ interface Props {
 }
 
 export default function LiveBanner({ liveState }: Props) {
-  const [label, setLabel] = useState<string>('Nothing live');
+  // `reference` is computed once in liveStateRepository — never render raw row ids here.
+  // The operator has to be able to read this at a glance and know what the stream shows.
+  const label =
+    liveState.reference == null
+      ? 'Nothing live'
+      : liveState.hidden
+        ? `OUTPUT BLANK — ${liveState.reference} is selected`
+        : `LIVE: ${liveState.reference}`;
 
-  useEffect(() => {
-    if (liveState.stagedItemId == null || liveState.verseOrBlockId == null) {
-      setLabel('Nothing live');
-      return;
-    }
-    setLabel(`LIVE (item #${liveState.stagedItemId}, entry #${liveState.verseOrBlockId})`);
-  }, [liveState]);
-
-  return <div role="status">{label}</div>;
+  return (
+    <div role="status" data-hidden={liveState.hidden ? 'true' : 'false'}>
+      {label}
+    </div>
+  );
 }
 ```
 
@@ -3012,8 +3953,9 @@ git commit -m "feat: add staged list, content pane with arrow-key live navigatio
 - Test: `tests/component/App.test.tsx`
 
 **Interfaces:**
-- Consumes: `window.api.getServerUrls/getOutputStyles/setActiveStyle/pickOpenlpFiles/importOpenlp` (Task 8); `SearchPanel`, `StagedList`, `ContentPane`, `LiveBanner` (Tasks 9–10); the `#search-input` element id `SearchPanel` renders (Task 9).
-- Produces: `<SettingsScreen />`, and the final composed `<App />` — the top-level component `main.tsx` (Task 1) renders. `App` also owns the spec's global keyboard shortcuts: digit keys `1`-`9` jump directly to a staged item's content pane, and `/` or `Ctrl+F` focuses the search box.
+- Consumes: `window.api.getServerUrls/getOutputStyles/setActiveStyle/listTranslations/getActiveTranslation/setActiveTranslation/pickOpenlpFiles/importOpenlp/setOutputHidden` (Task 8); `SearchPanel`, `StagedList`, `ContentPane`, `LiveBanner` (Tasks 9–10); the `#search-input` element id `SearchPanel` renders (Task 9).
+- Produces: `<SettingsScreen onTranslationChange />`, and the final composed `<App />` — the top-level component `main.tsx` (Task 1) renders.
+- `App` owns four things nothing else may own: the active translation (passed to `SearchPanel`), the `focusEntryId` that makes a content-search hit jump to its verse, the global shortcuts (`1`-`9` jump to a staged item, `/` or `Ctrl+F` focus search, `Esc` toggles blank output — all suppressed while a text field has focus), and the error banner that makes a failed database write visible.
 
 - [ ] **Step 1: Write the failing SettingsScreen test**
 
@@ -3034,30 +3976,57 @@ beforeEach(() => {
       ])
     ),
     setActiveStyle: vi.fn().mockResolvedValue(undefined),
-    pickOpenlpFiles: vi.fn().mockResolvedValue(['/path/to/songs.sqlite']),
-    importOpenlp: vi.fn().mockResolvedValue({ imported: 556, skipped: 0, errors: [] }),
+    listTranslations: vi.fn().mockResolvedValue(['KJV', 'New English Translation (NET)']),
+    getActiveTranslation: vi.fn().mockResolvedValue('KJV'),
+    setActiveTranslation: vi.fn().mockResolvedValue(undefined),
+    pickOpenlpFiles: vi.fn().mockResolvedValue(['/path/to/songs.sqlite', '/path/to/KJV.sqlite']),
+    importOpenlp: vi.fn().mockResolvedValue({
+      sources: [
+        { file: 'songs.sqlite', kind: 'songs', imported: 556, skipped: 0, errors: [] },
+        { file: 'KJV.sqlite', kind: 'bible', translation: 'KJV', imported: 36503, skipped: 0, errors: [] },
+      ],
+      imported: 37059,
+      skipped: 0,
+      errors: [],
+    }),
   };
 });
 
 describe('SettingsScreen', () => {
   it('shows the local and LAN output URLs', async () => {
-    render(<SettingsScreen />);
+    render(<SettingsScreen onTranslationChange={vi.fn()} />);
     expect(await screen.findByText('http://localhost:4180/output')).toBeInTheDocument();
     expect(await screen.findByText('http://192.168.1.20:4180/output')).toBeInTheDocument();
   });
 
   it('sets the active bible style independently from the song style', async () => {
-    render(<SettingsScreen />);
+    render(<SettingsScreen onTranslationChange={vi.fn()} />);
     const bibleMinimal = await screen.findByRole('button', { name: /bible.*minimal caption/i });
     fireEvent.click(bibleMinimal);
     await waitFor(() => expect(window.api.setActiveStyle).toHaveBeenCalledWith('bible', 2));
   });
 
-  it('runs an OpenLP import and shows the resulting summary', async () => {
-    render(<SettingsScreen />);
+  it('lets the operator pick which translation the app searches', async () => {
+    const onTranslationChange = vi.fn();
+    render(<SettingsScreen onTranslationChange={onTranslationChange} />);
+    const select = await screen.findByLabelText(/bible translation/i);
+    fireEvent.change(select, { target: { value: 'New English Translation (NET)' } });
+    await waitFor(() =>
+      expect(window.api.setActiveTranslation).toHaveBeenCalledWith('New English Translation (NET)')
+    );
+    expect(onTranslationChange).toHaveBeenCalledWith('New English Translation (NET)');
+  });
+
+  // A single merged count ("37059 imported") tells the operator nothing about whether
+  // their songs actually arrived. Report each file.
+  it('runs an OpenLP import and reports each file separately', async () => {
+    render(<SettingsScreen onTranslationChange={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /import from openlp/i }));
-    await waitFor(() => expect(window.api.importOpenlp).toHaveBeenCalled());
-    expect(await screen.findByText(/556 imported/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(window.api.importOpenlp).toHaveBeenCalledWith(['/path/to/songs.sqlite', '/path/to/KJV.sqlite'])
+    );
+    expect(await screen.findByText(/songs\.sqlite.*556/i)).toBeInTheDocument();
+    expect(await screen.findByText(/KJV\.sqlite.*36,?503/i)).toBeInTheDocument();
   });
 });
 ```
@@ -3073,17 +4042,36 @@ Expected: FAIL — module not found.
 import { useEffect, useState } from 'react';
 import type { ContentType, ImportSummary, OutputStyle } from '../../shared/types';
 
-export default function SettingsScreen() {
+interface Props {
+  /** Lets App re-render search/content against the newly chosen translation. */
+  onTranslationChange: (translation: string) => void;
+}
+
+export default function SettingsScreen({ onTranslationChange }: Props) {
   const [urls, setUrls] = useState<{ local: string; lan: string | null } | null>(null);
   const [bibleStyles, setBibleStyles] = useState<OutputStyle[]>([]);
   const [songStyles, setSongStyles] = useState<OutputStyle[]>([]);
+  const [translations, setTranslations] = useState<string[]>([]);
+  const [translation, setTranslation] = useState<string>('');
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+
+  const loadTranslations = () => {
+    window.api.listTranslations().then(setTranslations);
+    window.api.getActiveTranslation().then((t) => setTranslation(t ?? ''));
+  };
 
   useEffect(() => {
     window.api.getServerUrls().then(setUrls);
     window.api.getOutputStyles('bible').then(setBibleStyles);
     window.api.getOutputStyles('song').then(setSongStyles);
+    loadTranslations();
   }, []);
+
+  async function chooseTranslation(next: string) {
+    await window.api.setActiveTranslation(next);
+    setTranslation(next);
+    onTranslationChange(next);
+  }
 
   async function chooseStyle(contentType: ContentType, styleId: number) {
     await window.api.setActiveStyle(contentType, styleId);
@@ -3094,9 +4082,9 @@ export default function SettingsScreen() {
   async function runImport() {
     const files = await window.api.pickOpenlpFiles();
     if (files.length === 0) return;
-    const songsPath = files.find((f) => f.toLowerCase().includes('song')) ?? null;
-    const biblePaths = files.filter((f) => f !== songsPath);
-    setSummary(await window.api.importOpenlp(songsPath, biblePaths));
+    // The main process classifies each file by its schema — no filename guessing here.
+    setSummary(await window.api.importOpenlp(files));
+    loadTranslations();
   }
 
   function styleSection(contentType: ContentType, styles: OutputStyle[]) {
@@ -3133,16 +4121,39 @@ export default function SettingsScreen() {
           resolution → check "Shutdown source when not visible" off.
         </p>
       </section>
+      <section>
+        <h3>Bible translation</h3>
+        <label htmlFor="translation-select">Bible translation</label>
+        <select
+          id="translation-select"
+          value={translation}
+          onChange={(e) => chooseTranslation(e.target.value)}
+        >
+          {translations.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        {translations.length === 0 && <p>No translations imported yet.</p>}
+      </section>
       {styleSection('bible', bibleStyles)}
       {styleSection('song', songStyles)}
       <section>
         <h3>Import from OpenLP</h3>
+        <p>Pick your OpenLP song database and any Bible translation files — ServiceFlow works out which is which.</p>
         <button onClick={runImport}>Import from OpenLP</button>
         {summary && (
-          <p>
-            {summary.imported} imported, {summary.skipped} skipped.
-            {summary.errors.length > 0 && ` Errors: ${summary.errors.map((e) => e.identifier).join(', ')}`}
-          </p>
+          <ul>
+            {summary.sources.map((s) => (
+              <li key={s.file}>
+                {s.file} ({s.kind}
+                {s.translation ? `, ${s.translation}` : ''}): {s.imported.toLocaleString()} imported,{' '}
+                {s.skipped} skipped
+                {s.errors.length > 0 && ` — ${s.errors.slice(0, 5).map((e) => e.identifier).join(', ')}`}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </div>
@@ -3153,7 +4164,7 @@ export default function SettingsScreen() {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run tests/component/SettingsScreen.test.tsx`
-Expected: PASS (3 tests).
+Expected: PASS (4 tests).
 
 - [ ] **Step 5: Write the failing App smoke test**
 
@@ -3164,15 +4175,28 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import App from '../../src/renderer/App';
 
+const EMPTY_LIVE = {
+  stagedItemId: null,
+  verseOrBlockId: null,
+  styleId: null,
+  hidden: false,
+  updatedAt: '',
+  reference: null,
+};
+
 beforeEach(() => {
   (window as any).api = {
     getStagedItems: vi.fn().mockResolvedValue([]),
-    getLiveState: vi.fn().mockResolvedValue({ stagedItemId: null, verseOrBlockId: null, styleId: null, updatedAt: '' }),
+    getLiveState: vi.fn().mockResolvedValue(EMPTY_LIVE),
+    setOutputHidden: vi.fn().mockResolvedValue({ ...EMPTY_LIVE, hidden: true }),
     onLiveStateChanged: vi.fn().mockReturnValue(() => {}),
     getServerUrls: vi.fn().mockResolvedValue({ local: 'http://localhost:4180/output', lan: null }),
     getOutputStyles: vi.fn().mockResolvedValue([]),
+    listTranslations: vi.fn().mockResolvedValue(['KJV']),
+    getActiveTranslation: vi.fn().mockResolvedValue('KJV'),
     findBibleBooks: vi.fn().mockResolvedValue([]),
     findSongsByTitle: vi.fn().mockResolvedValue([]),
+    getBlocksForSong: vi.fn().mockResolvedValue([]),
   };
 });
 
@@ -3200,18 +4224,54 @@ describe('App', () => {
 
   it('jumps to a staged item\'s content pane when its number key is pressed', async () => {
     (window.api.getStagedItems as any).mockResolvedValue([
-      { id: 1, type: 'bible', refId: 43, chapter: 3, position: 0, label: 'John 3' },
+      { id: 1, type: 'bible', refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' },
       { id: 2, type: 'song', refId: 1, chapter: null, position: 1, label: 'Amazing Grace' },
     ]);
-    (window.api.getBlocksForSong as any) = vi.fn().mockResolvedValue([
+    (window.api.getBlocksForSong as any).mockResolvedValue([
       { id: 200, songId: 1, label: 'Verse 1', text: 'Amazing grace', displayOrder: 0 },
     ]);
     render(<App />);
-    await screen.findByText('John 3');
+    await screen.findByText('John 3 (KJV)');
 
     fireEvent.keyDown(window, { key: '2' });
 
     expect(await screen.findByText(/Amazing grace/)).toBeInTheDocument();
+  });
+
+  it('blanks the output on Escape and says so in the banner', async () => {
+    render(<App />);
+    await screen.findByText(/nothing live/i);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    await waitFor(() => expect(window.api.setOutputHidden).toHaveBeenCalledWith(true));
+  });
+
+  it('does not fire shortcuts while the operator is typing', async () => {
+    render(<App />);
+    const input = await screen.findByPlaceholderText(/search/i);
+    input.focus();
+
+    fireEvent.keyDown(input, { key: '2' });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(window.api.setOutputHidden).not.toHaveBeenCalled();
+  });
+
+  // The spec requires DB write failures to be visible, not buried in devtools.
+  it('surfaces a failed main-process call as a banner', async () => {
+    render(<App />);
+    await screen.findByText(/nothing live/i);
+
+    window.dispatchEvent(
+      new PromiseRejectionEvent('unhandledrejection', {
+        promise: Promise.reject(new Error('SQLITE_FULL: database or disk is full')),
+        reason: new Error('SQLITE_FULL: database or disk is full'),
+        cancelable: true,
+      })
+    );
+
+    expect(await screen.findByText(/disk is full/i)).toBeInTheDocument();
   });
 });
 ```
@@ -3232,13 +4292,23 @@ import LiveBanner from './components/LiveBanner';
 import SettingsScreen from './components/SettingsScreen';
 import type { LiveState, StagedItem } from '../shared/types';
 
-const EMPTY_LIVE_STATE: LiveState = { stagedItemId: null, verseOrBlockId: null, styleId: null, updatedAt: '' };
+const EMPTY_LIVE_STATE: LiveState = {
+  stagedItemId: null,
+  verseOrBlockId: null,
+  styleId: null,
+  hidden: false,
+  updatedAt: '',
+  reference: null,
+};
 
 export default function App() {
   const [view, setView] = useState<'operate' | 'settings'>('operate');
   const [items, setItems] = useState<StagedItem[]>([]);
   const [activeItem, setActiveItem] = useState<StagedItem | null>(null);
+  const [focusEntryId, setFocusEntryId] = useState<number | null>(null);
   const [liveState, setLiveStateValue] = useState<LiveState>(EMPTY_LIVE_STATE);
+  const [translation, setTranslation] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
 
   const refreshStagedItems = useCallback(() => {
     window.api.getStagedItems().then(setItems);
@@ -3247,49 +4317,97 @@ export default function App() {
   useEffect(() => {
     refreshStagedItems();
     window.api.getLiveState().then(setLiveStateValue);
+    window.api.getActiveTranslation().then((t) => setTranslation(t ?? ''));
     const unsubscribe = window.api.onLiveStateChanged(setLiveStateValue);
     return unsubscribe;
   }, [refreshStagedItems]);
 
+  // Immediate persistence is this app's crash-recovery story, so a failed write must be
+  // loud. Every window.api.* call is a promise; one listener turns any rejection into a
+  // visible banner instead of a silent devtools error.
+  useEffect(() => {
+    function onRejection(e: PromiseRejectionEvent) {
+      setError(String((e.reason as Error)?.message ?? e.reason));
+      e.preventDefault();
+    }
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => window.removeEventListener('unhandledrejection', onRejection);
+  }, []);
+
+  function handleStaged(item: StagedItem, entryId: number | null) {
+    refreshStagedItems();
+    setActiveItem(item);
+    setFocusEntryId(entryId); // content search jumps to the matched verse/block
+  }
+
+  function selectActive(item: StagedItem) {
+    setActiveItem(item);
+    setFocusEntryId(null);
+  }
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
-      const isTypingInField = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
+      // No global shortcut may fire while a text field has focus — an operator typing a
+      // search term must not be able to blank or switch the live output by accident.
+      const isTypingInField =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable === true;
+      if (isTypingInField) return;
 
       if (e.key === '/' || (e.key.toLowerCase() === 'f' && e.ctrlKey)) {
-        if (!isTypingInField) {
-          e.preventDefault();
-          document.getElementById('search-input')?.focus();
-        }
+        e.preventDefault();
+        document.getElementById('search-input')?.focus();
         return;
       }
 
-      if (!isTypingInField && /^[1-9]$/.test(e.key)) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        window.api.setOutputHidden(!liveState.hidden).then(setLiveStateValue);
+        return;
+      }
+
+      if (/^[1-9]$/.test(e.key)) {
         const index = Number(e.key) - 1;
         if (items[index]) {
           setView('operate');
-          setActiveItem(items[index]);
+          selectActive(items[index]);
         }
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [items]);
+  }, [items, liveState.hidden]);
 
   return (
     <div>
+      {error && (
+        <div role="alert" onClick={() => setError(null)}>
+          ServiceFlow hit a problem: {error} (click to dismiss)
+        </div>
+      )}
       <nav>
         <button onClick={() => setView('operate')}>Operate</button>
         <button onClick={() => setView('settings')}>Settings</button>
+        <button
+          aria-pressed={liveState.hidden}
+          onClick={() => window.api.setOutputHidden(!liveState.hidden).then(setLiveStateValue)}
+        >
+          {liveState.hidden ? 'Show output' : 'Hide output'}
+        </button>
       </nav>
       <LiveBanner liveState={liveState} />
       {view === 'settings' ? (
-        <SettingsScreen />
+        <SettingsScreen onTranslationChange={setTranslation} />
       ) : (
         <div>
-          <SearchPanel onStaged={refreshStagedItems} />
-          <StagedList items={items} onSelectActive={setActiveItem} onChanged={refreshStagedItems} />
-          <ContentPane activeItem={activeItem} liveState={liveState} onLive={() => window.api.getLiveState().then(setLiveStateValue)} />
+          <SearchPanel translation={translation} onStaged={handleStaged} />
+          <StagedList items={items} onSelectActive={selectActive} onChanged={refreshStagedItems} />
+          <ContentPane
+            activeItem={activeItem}
+            liveState={liveState}
+            focusEntryId={focusEntryId}
+            onLive={() => window.api.getLiveState().then(setLiveStateValue)}
+          />
         </div>
       )}
     </div>
@@ -3300,18 +4418,29 @@ export default function App() {
 - [ ] **Step 8: Run the test to verify it passes**
 
 Run: `npx vitest run tests/component/App.test.tsx`
-Expected: PASS (4 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 9: Typecheck, run the full suite, and manually verify in the running app**
 
 Run: `npm run typecheck && npm test`
 Run: `npm run build:main && npm run dev`
 
-Manually: use Settings → Import from OpenLP, pick the church's real `openlp/songs.sqlite`
-and `openlp/KJV.sqlite` (these live untracked at the repo root — see Global Constraints),
-confirm the summary shows ~556 songs and ~36,503 verses imported with 0 errors, then
-switch to Operate, search "John", stage chapter 3, click verse 16, and confirm the live
-banner updates.
+Manually (needs a real desktop session — Electron will not open a window under WSL without
+WSLg or an X server; otherwise do this pass on the Windows PC):
+
+Settings → Import from OpenLP, and select all four of the church's real files at once
+(`openlp/songs.sqlite`, `openlp/KJV.sqlite`, `openlp/New English Translation (NET).sqlite`,
+`openlp/New King James Version (NKJV).sqlite` — untracked, see Global Constraints). Confirm:
+
+- the summary lists each file separately: ~556 songs, ~36,503 KJV verses, and the two
+  other translations, with 0 errors;
+- the translation dropdown now offers all three translations;
+- with KJV selected, "Romans 1:1" reads "Paul, a servant of Jesus Christ" and "Acts 1:1"
+  reads "The former treatise…" — then switch to NET and check both again. This is the
+  swapped-book-id regression, and it is the one thing worth checking by hand every time;
+- "How Sweet the name of Jesus Sounds" shows six blocks, not three;
+- Operate → search "John", stage chapter 3, click verse 16, banner reads "LIVE: John 3:16";
+- press `Esc`: the banner switches to "OUTPUT BLANK"; press it again to restore.
 
 - [ ] **Step 10: Commit**
 
@@ -3368,21 +4497,28 @@ mkdir -p build
 (No icon file is committed here — add `build/icon.ico` manually when branding is ready;
 `electron-builder` works without it in the meantime.)
 
-- [ ] **Step 3: Run the packaging build**
+- [ ] **Step 3: Run the packaging build — on Windows, not on this machine**
 
-Run: `npm run package`
-Expected: `release/ServiceFlow-Setup-0.1.0.exe` is created. If `better-sqlite3`'s native
-binding fails to load when the packaged app launches, re-run `npm run postinstall` (the
-`electron-rebuild` script from Task 1) before packaging again — this rebuilds the native
-module against Electron's Node ABI rather than the system Node ABI.
+ServiceFlow bundles `better-sqlite3`, a native module that must be compiled against
+Electron's Node ABI *for win32*. `@electron/rebuild` cannot cross-compile that from
+Linux/WSL, so a `npm run package` run here either fails or produces an installer whose
+database layer dies on first launch. Build it in one of these two places instead:
+
+1. On the church's (or any) Windows PC: clone the repo, `npm install` (which runs the
+   `electron-rebuild` postinstall), then `npm run package`.
+2. Or in CI on a `windows-latest` runner, which is the reproducible option once this is
+   built more than once.
+
+Expected: `release/ServiceFlow-Setup-0.1.0.exe` is created. If the packaged app launches
+but errors on the database, re-run `npm run postinstall` before packaging again.
 
 - [ ] **Step 4: Manually verify the installer on a Windows machine**
 
-Since this repository was developed on Linux/WSL, `npm run package` cross-builds the
-Windows installer but cannot be launched here. Copy `release/ServiceFlow-Setup-0.1.0.exe`
-to the actual church Windows PC and confirm: it installs, launches, the OpenLP import
-works against the real `openlp/` files, and the `/output` URL from Settings works as an
-OBS Browser Source with a transparent background.
+Install `release/ServiceFlow-Setup-0.1.0.exe` on the actual church Windows PC and confirm:
+it installs and launches, the OpenLP import works against the real `openlp/` files (with
+the per-file summary), and the `/output` URL from Settings works as an OBS Browser Source
+with a transparent background. Expect a SmartScreen warning on this unsigned build —
+document the click-through for whoever installs it.
 
 - [ ] **Step 5: Commit**
 
@@ -3395,15 +4531,20 @@ git commit -m "chore: configure electron-builder for Windows NSIS packaging"
 
 ## Known gaps versus the spec (not blocking v1, but real)
 
-- **No visible banner on database write failure.** The spec calls for any DB write
-  failure (disk full, permissions) to surface as a visible banner in the operator UI.
-  This plan's IPC calls (`stageItem`, `setLiveState`, etc.) do not currently wrap
-  failures in a shared error-banner mechanism — a failure would currently only appear
-  as a rejected promise in the renderer devtools console. Before relying on this for a
-  real service, add a small shared error-toast component and a `.catch()` on every
-  `window.api.*` call site that surfaces the message there.
 - **No manual server-port override**, per the deviation noted in Global Constraints —
-  the app auto-picks a free port instead.
+  the app auto-picks a free port and tells the operator the URL changed.
+- **The error banner is a catch-all, not per-call handling.** `App` listens for
+  `unhandledrejection`, which makes every failed `window.api.*` call visible with one
+  mechanism, but it cannot say which action failed. That is the right trade for v1;
+  add per-call context if operators report confusing banners.
+- **Re-importing a song mid-service invalidates its live block id.** Blocks are replaced
+  wholesale, so their row ids change. Live state would point at a deleted block and the
+  output would blank. Acceptable because importing during a service is not a real
+  workflow — but do not make the importer reachable from the Operate view.
+- **Apocryphal books are not filtered.** KJV brings 12 of them into book browse. Harmless,
+  and easy to hide later with `WHERE testament != 'AP'` if operators find it noisy.
+- **Staged-list reordering has no UI.** `reorderStagedItems` exists and is tested, but no
+  task wires a drag handle to it; the spec mentions reordering. Add it if operators ask.
 
 ## Post-plan manual verification (not a task — do this before first live use)
 
@@ -3415,6 +4556,15 @@ with real OBS running before the app is trusted in an actual service:
 2. If operator and OBS are on separate machines, confirm the LAN URL works end-to-end.
 3. Kill the ServiceFlow process mid-session (staged items + a live verse set), relaunch,
    and confirm both the staged list and the live output are restored exactly.
-4. Run the real OpenLP import against `openlp/songs.sqlite`, `openlp/KJV.sqlite`,
-   `openlp/New English Translation (NET).sqlite`, and `openlp/New King James Version
-   (NKJV).sqlite`, and spot-check a handful of songs and verses for correct text.
+4. Run the real OpenLP import against all four files and spot-check the specific cases the
+   unit tests are modelled on: KJV Romans 1:1 vs Acts 1:1 against NET's, and the six blocks
+   of "How Sweet the name of Jesus Sounds".
+5. Put Esther 8:9 (534 characters) live at 1920×1080 and confirm it fits inside the lower
+   third rather than running off the top of the frame. If KJV's Apocrypha is in use, do the
+   same with Sirach 1:0 (3,133 characters) as the worst case.
+6. Press `Esc` mid-service and confirm the OBS output clears within a frame or two, then
+   restores the same verse when pressed again.
+7. With a verse live, remove its staged item and confirm the OBS output clears immediately
+   rather than holding a stale verse.
+
+These map one-to-one onto the spec's acceptance criteria; if any fails, v1 is not done.
