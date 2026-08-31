@@ -75,6 +75,14 @@ export function createServer(db: Database.Database): ServerHandle {
   const httpServer = http.createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
+  // `ws` forwards the underlying http.Server's own 'error' events (e.g. EADDRINUSE from a
+  // failed listen()) onto the WebSocketServer itself. With no listener here, Node's default
+  // EventEmitter behaviour for an unhandled 'error' event throws synchronously -- and it does
+  // so from *inside* the httpServer 'error' emit, ahead of start()'s own reject() listener,
+  // killing the whole Electron main process before the OS-assigned-port fallback ever runs.
+  // This no-op listener makes a bind failure a normal rejected promise instead of a crash.
+  wss.on('error', () => {});
+
   wss.on('connection', (socket: WebSocket) => {
     socket.send(JSON.stringify({ type: 'live_update', payload: buildOutputPayload(db) }));
   });
@@ -89,8 +97,13 @@ export function createServer(db: Database.Database): ServerHandle {
   return {
     start(port: number) {
       return new Promise((resolve, reject) => {
-        httpServer.once('error', reject);
+        const onError = (err: Error) => {
+          httpServer.removeListener('error', onError);
+          reject(err);
+        };
+        httpServer.once('error', onError);
         httpServer.listen(port, '0.0.0.0', () => {
+          httpServer.removeListener('error', onError);
           const address = httpServer.address();
           resolve(typeof address === 'object' && address ? address.port : port);
         });

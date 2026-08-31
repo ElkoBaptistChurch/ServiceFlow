@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import net from 'net';
 import WebSocket from 'ws';
 import { applySchema } from '../../src/main/db/schema';
 import { getStyles, seedDefaultOutputStyles, setActiveStyle } from '../../src/main/db/outputStylesRepository';
@@ -154,5 +155,32 @@ describe('embedded server', () => {
     const payload = buildOutputPayload(db);
     expect(payload.hidden).toBe(true);
     expect(payload.templateKey).toBe(activeStyle.templateKey);
+  });
+
+  // Regression test for a crash where a busy port took down the whole process: the
+  // WebSocketServer built on the httpServer re-emits the httpServer's EADDRINUSE as its
+  // own unhandled 'error' event, which Node's EventEmitter throws synchronously if nobody
+  // is listening -- before start()'s reject() ever gets a chance to run. If this test file
+  // itself dies mid-run (rather than failing an assertion), that IS the bug reproducing.
+  it('rejects start() on a busy port instead of crashing, then recovers on start(0)', async () => {
+    // Occupy a real port with a plain net server so createServer's start() collides with it.
+    const occupied = net.createServer();
+    await new Promise<void>((resolve) => occupied.listen(0, '0.0.0.0', () => resolve()));
+    const busyPort = (occupied.address() as net.AddressInfo).port;
+
+    // A fresh server/handle, separate from the shared beforeEach one, so we can exercise a
+    // failed start() followed by a successful one on the very same handle.
+    const otherServer = createServer(db);
+
+    await expect(otherServer.start(busyPort)).rejects.toThrow();
+
+    // The failed start() must leave no half-open handles behind: a subsequent start(0) on
+    // the same handle must succeed and bind a real, different port.
+    const recoveredPort = await otherServer.start(0);
+    expect(recoveredPort).toBeGreaterThan(0);
+    expect(recoveredPort).not.toBe(busyPort);
+
+    await otherServer.stop();
+    await new Promise<void>((resolve) => occupied.close(() => resolve()));
   });
 });

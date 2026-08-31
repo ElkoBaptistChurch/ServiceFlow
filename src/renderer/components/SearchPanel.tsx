@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { BibleBook, StagedItem } from '../../shared/types';
 
 type Mode = 'bible' | 'song';
@@ -26,6 +26,10 @@ export default function SearchPanel({ translation, onStaged }: Props) {
   const [selectedBook, setSelectedBook] = useState<BibleBook | null>(null);
   const [chapters, setChapters] = useState<number[]>([]);
   const [contentResults, setContentResults] = useState<{ label: string; onSelect: () => void }[]>([]);
+  // Monotonic sequence number so a slow, older query can never overwrite a newer one's
+  // results if it resolves later: each search captures the id current at fire time and
+  // only commits state if it is still the latest one issued by the time it resolves.
+  const searchSeq = useRef(0);
 
   useEffect(() => {
     setSelectedBook(null);
@@ -37,12 +41,21 @@ export default function SearchPanel({ translation, onStaged }: Props) {
       return;
     }
     const handle = setTimeout(() => {
+      const requestId = ++searchSeq.current;
+      const isStale = () => requestId !== searchSeq.current;
       if (subMode === 'browse' && mode === 'bible') {
-        window.api.findBibleBooks(query, translation).then(setBooks);
+        window.api.findBibleBooks(query, translation).then((results) => {
+          if (isStale()) return;
+          setBooks(results);
+        });
       } else if (subMode === 'browse' && mode === 'song') {
-        window.api.findSongsByTitle(query).then(setSongs);
+        window.api.findSongsByTitle(query).then((results) => {
+          if (isStale()) return;
+          setSongs(results);
+        });
       } else if (subMode === 'content' && mode === 'bible') {
-        window.api.searchBibleContent(query, translation).then((results) =>
+        window.api.searchBibleContent(query, translation).then((results) => {
+          if (isStale()) return;
           setContentResults(
             results.map((r) => ({
               label: `${r.bookName} ${r.verse.chapter}:${r.verse.verse} — ${r.verse.text}`,
@@ -53,18 +66,19 @@ export default function SearchPanel({ translation, onStaged }: Props) {
                   .stageItem('bible', r.verse.bookId, r.verse.chapter)
                   .then((item) => onStaged(item, r.verse.id)),
             }))
-          )
-        );
+          );
+        });
       } else {
-        window.api.searchSongContent(query).then((results) =>
+        window.api.searchSongContent(query).then((results) => {
+          if (isStale()) return;
           setContentResults(
             results.map((r) => ({
               label: `${r.songTitle} (${r.block.label}) — ${r.block.text}`,
               onSelect: () =>
                 window.api.stageItem('song', r.block.songId, null).then((item) => onStaged(item, r.block.id)),
             }))
-          )
-        );
+          );
+        });
       }
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);

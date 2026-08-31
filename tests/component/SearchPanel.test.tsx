@@ -88,4 +88,83 @@ describe('SearchPanel', () => {
     await waitFor(() => expect(window.api.searchBibleContent).toHaveBeenCalledWith('zzz', 'KJV'));
     expect(await screen.findByText(/no matches/i)).toBeInTheDocument();
   });
+
+  // Regression test: an older in-flight query resolving AFTER a newer one must not
+  // clobber the newer results. Controls resolution order explicitly via deferred promises.
+  it('keeps the newer book-search results when an older query resolves last', async () => {
+    const ROMANS = { id: 45, translation: 'KJV', sourceBookId: 45, name: 'Romans', testament: 'NT', sortOrder: 45 };
+    let resolveRom: (v: any) => void;
+    let resolveRomans: (v: any) => void;
+    const romPromise = new Promise((resolve) => { resolveRom = resolve; });
+    const romansPromise = new Promise((resolve) => { resolveRomans = resolve; });
+
+    (window.api.findBibleBooks as any).mockImplementation((q: string) => {
+      if (q === 'rom') return romPromise;
+      if (q === 'romans') return romansPromise;
+      return Promise.resolve([]);
+    });
+
+    render(<SearchPanel translation="KJV" onStaged={vi.fn()} />);
+    const input = screen.getByPlaceholderText(/search/i);
+
+    fireEvent.change(input, { target: { value: 'rom' } });
+    await waitFor(() => expect(window.api.findBibleBooks).toHaveBeenCalledWith('rom', 'KJV'));
+
+    fireEvent.change(input, { target: { value: 'romans' } });
+    await waitFor(() => expect(window.api.findBibleBooks).toHaveBeenCalledWith('romans', 'KJV'));
+
+    // Resolve the NEWER query first, then the OLDER (now-stale) one -- the older
+    // response arriving last must not overwrite the newer, correct results.
+    resolveRomans!([ROMANS]);
+    await screen.findByText('Romans');
+    resolveRom!([JOHN]);
+
+    // Give any (incorrect) stale update a chance to land before asserting.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByText('Romans')).toBeInTheDocument();
+    expect(screen.queryByText('John')).not.toBeInTheDocument();
+  });
+
+  // Same class of bug on a content-search path.
+  it('keeps the newer content-search results when an older query resolves last', async () => {
+    let resolveOld: (v: any) => void;
+    let resolveNew: (v: any) => void;
+    const oldPromise = new Promise((resolve) => { resolveOld = resolve; });
+    const newPromise = new Promise((resolve) => { resolveNew = resolve; });
+
+    (window.api.searchBibleContent as any).mockImplementation((q: string) => {
+      if (q === 'lov') return oldPromise;
+      if (q === 'loved') return newPromise;
+      return Promise.resolve([]);
+    });
+
+    render(<SearchPanel translation="KJV" onStaged={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /content search/i }));
+    const input = screen.getByPlaceholderText(/search/i);
+
+    fireEvent.change(input, { target: { value: 'lov' } });
+    await waitFor(() => expect(window.api.searchBibleContent).toHaveBeenCalledWith('lov', 'KJV'));
+
+    fireEvent.change(input, { target: { value: 'loved' } });
+    await waitFor(() => expect(window.api.searchBibleContent).toHaveBeenCalledWith('loved', 'KJV'));
+
+    const newResult = {
+      verse: { id: 900, bookId: 7, chapter: 3, verse: 16, text: 'For God so loved the world.' },
+      bookName: 'John',
+      translation: 'KJV',
+    };
+    const oldResult = {
+      verse: { id: 901, bookId: 7, chapter: 3, verse: 19, text: 'men loved darkness rather than light.' },
+      bookName: 'John',
+      translation: 'KJV',
+    };
+
+    resolveNew!([newResult]);
+    await screen.findByText(/John 3:16/);
+    resolveOld!([oldResult]);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByText(/John 3:16/)).toBeInTheDocument();
+    expect(screen.queryByText(/John 3:19/)).not.toBeInTheDocument();
+  });
 });
