@@ -1,0 +1,66 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.output-root {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 32px 48px;
+  /* Hard ceiling so a pathological passage (KJV's Sirach 1:0 is 3,133 chars) can
+     never paint over the whole frame even if fitting hits its floor. */
+  max-height: 60vh;
+  overflow: hidden;
+  box-sizing: border-box;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.output-root.hidden {
+  opacity: 0;
+}
+
+.output-root.visible {
+  opacity: 1;
+}
+
+.output-text {
+  /* Starting size only — output.js shrinks this to fit long verses (Esther 8:9 is
+     534 characters) instead of letting them run off the top of the frame. */
+  font-size: 42px;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  line-height: 1.3;
+}
+
+.output-reference {
+  margin-top: 12px;
+  font-size: 22px;
+  font-weight: 400;
+  color: #f0d060;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* Bible presets */
+.bible-classic .output-text { border-left: 6px solid #f0d060; padding-left: 20px; }
+.bible-minimal .output-text { font-size: 34px; }
+.bible-minimal .output-reference { font-size: 18px; }
+.bible-bold { background: rgba(10, 10, 20, 0.55); }
+.bible-bold .output-text { font-size: 48px; }
+.bible-centered { text-align: center; left: 10%; right: 10%; bottom: 15%; }
+
+/* Song presets */
+.song-classic .output-text { border-left: 6px solid #6fb2f0; padding-left: 20px; }
+.song-minimal .output-text { font-size: 34px; }
+.song-minimal .output-reference { font-size: 18px; }
+.song-bold { background: rgba(10, 10, 20, 0.55); }
+.song-bold .output-text { font-size: 48px; }
+.song-centered { text-align: center; left: 10%; right: 10%; bottom: 15%; }
