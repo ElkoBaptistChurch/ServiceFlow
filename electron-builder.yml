@@ -1,0 +1,17 @@
+appId: com.serviceflow.app
+productName: ServiceFlow
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+asarUnpack:
+  - '**/*.node'
+win:
+  target: nsis
+  artifactName: '${productName}-Setup-${version}.${ext}'
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
