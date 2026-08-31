@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import SearchPanel from './components/SearchPanel';
 import StagedList from './components/StagedList';
 import ContentPane from './components/ContentPane';
@@ -25,16 +25,43 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const refreshStagedItems = useCallback(() => {
-    window.api.getStagedItems().then(setItems);
+    return window.api.getStagedItems().then((loaded) => {
+      setItems(loaded);
+      return loaded;
+    });
   }, []);
 
+  // Runs once, on mount only: reselects the item that was live before a crash so the
+  // content pane and arrow keys work immediately, without re-fighting the operator's own
+  // later selections every time liveState or items happens to change again.
+  const didInitActiveItem = useRef(false);
+
   useEffect(() => {
-    refreshStagedItems();
-    window.api.getLiveState().then(setLiveStateValue);
+    Promise.all([refreshStagedItems(), window.api.getLiveState()]).then(([loadedItems, state]) => {
+      setLiveStateValue(state);
+      if (!didInitActiveItem.current) {
+        didInitActiveItem.current = true;
+        if (state.stagedItemId != null) {
+          const restored = loadedItems.find((i) => i.id === state.stagedItemId);
+          if (restored) setActiveItem(restored);
+        }
+      }
+    });
     window.api.getActiveTranslation().then((t) => setTranslation(t ?? ''));
     const unsubscribe = window.api.onLiveStateChanged(setLiveStateValue);
     return unsubscribe;
   }, [refreshStagedItems]);
+
+  // Removing the active item from the staged list (or any other refresh that drops it)
+  // must not leave a ghost behind: a content pane still rendering a deleted item's verses
+  // whose click either does nothing or, worse, blanks the live output because
+  // buildOutputPayload finds no staged_items row for the id it carries.
+  useEffect(() => {
+    if (activeItem && !items.some((item) => item.id === activeItem.id)) {
+      setActiveItem(null);
+      setFocusEntryId(null);
+    }
+  }, [items, activeItem]);
 
   // Immediate persistence is this app's crash-recovery story, so a failed write must be
   // loud. Every window.api.* call is a promise; one listener turns any rejection into a
@@ -59,6 +86,22 @@ export default function App() {
     setFocusEntryId(null);
   }
 
+  // The IPC round-trip for setOutputHidden takes real time; a second Esc pressed before the
+  // first response lands would otherwise read the same stale `liveState.hidden` closure and
+  // send the SAME value twice (blank, blank) instead of alternating (blank, restore),
+  // leaving the output stuck hidden. Track the freshest intended value in a ref, flipped
+  // optimistically at call time, so a rapid second press always sees what the first just sent.
+  const hiddenRef = useRef(liveState.hidden);
+  useEffect(() => {
+    hiddenRef.current = liveState.hidden;
+  }, [liveState.hidden]);
+
+  const toggleHidden = useCallback(() => {
+    const next = !hiddenRef.current;
+    hiddenRef.current = next;
+    window.api.setOutputHidden(next).then(setLiveStateValue);
+  }, []);
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -76,7 +119,7 @@ export default function App() {
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        window.api.setOutputHidden(!liveState.hidden).then(setLiveStateValue);
+        toggleHidden();
         return;
       }
 
@@ -90,7 +133,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [items, liveState.hidden]);
+  }, [items, toggleHidden]);
 
   return (
     <div>
@@ -102,10 +145,7 @@ export default function App() {
       <nav>
         <button onClick={() => setView('operate')}>Operate</button>
         <button onClick={() => setView('settings')}>Settings</button>
-        <button
-          aria-pressed={liveState.hidden}
-          onClick={() => window.api.setOutputHidden(!liveState.hidden).then(setLiveStateValue)}
-        >
+        <button aria-pressed={liveState.hidden} onClick={toggleHidden}>
           {liveState.hidden ? 'Show output' : 'Hide output'}
         </button>
       </nav>

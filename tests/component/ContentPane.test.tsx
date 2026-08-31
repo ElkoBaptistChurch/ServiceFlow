@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentPane from '../../src/renderer/components/ContentPane';
 
 const bibleItem = { id: 1, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' };
@@ -58,5 +58,38 @@ describe('ContentPane', () => {
     const match = await screen.findByText(/For God sent not his Son/);
     await waitFor(() => expect(match.closest('button')).toHaveAttribute('data-matched', 'true'));
     expect(window.api.setLiveState).not.toHaveBeenCalled();
+  });
+
+  // M5: switching the active item quickly must not let an older, slower fetch overwrite
+  // a newer selection's content -- the same class of race SearchPanel already guards
+  // against with a monotonic request sequence.
+  it('ignores a stale content fetch that resolves after a newer selection', async () => {
+    const otherBibleItem = { id: 3, type: 'bible' as const, refId: 8, chapter: 1, position: 0, label: 'Genesis 1' };
+    let resolveStale: (value: unknown) => void = () => {};
+    const stalePromise = new Promise((resolve) => {
+      resolveStale = resolve;
+    });
+    (window.api.getVersesForChapter as any) = vi
+      .fn()
+      .mockImplementationOnce(() => stalePromise) // for the first (soon-to-be-old) selection
+      .mockResolvedValueOnce([{ id: 300, bookId: 8, chapter: 1, verse: 1, text: 'In the beginning.' }]);
+
+    const { rerender } = render(
+      <ContentPane activeItem={bibleItem} liveState={liveState} focusEntryId={null} onLive={vi.fn()} />
+    );
+    rerender(<ContentPane activeItem={otherBibleItem} liveState={liveState} focusEntryId={null} onLive={vi.fn()} />);
+
+    expect(await screen.findByText(/In the beginning/)).toBeInTheDocument();
+
+    // The stale fetch for the ORIGINAL item resolves late; it must not overwrite what is
+    // now displayed for the newer item. Resolve inside act() and flush a microtask so the
+    // (buggy, pre-fix) overwrite would actually have landed before we assert its absence.
+    await act(async () => {
+      resolveStale([{ id: 100, bookId: 7, chapter: 3, verse: 16, text: 'For God so loved the world.' }]);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/In the beginning/)).toBeInTheDocument();
+    expect(screen.queryByText(/For God so loved the world/)).not.toBeInTheDocument();
   });
 });

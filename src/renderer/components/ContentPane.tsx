@@ -13,8 +13,14 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onLiv
   const [verses, setVerses] = useState<BibleVerse[]>([]);
   const [blocks, setBlocks] = useState<SongBlock[]>([]);
   const paneRef = useRef<HTMLUListElement>(null);
+  // Same class of bug SearchPanel guards against: switching activeItem quickly could let
+  // an older, slower fetch for item A resolve after a newer one for item B and overwrite
+  // its results. A monotonic sequence number ensures only the latest-issued fetch commits.
+  const fetchSeq = useRef(0);
 
   useEffect(() => {
+    const requestId = ++fetchSeq.current;
+    const isStale = () => requestId !== fetchSeq.current;
     if (!activeItem) {
       setVerses([]);
       setBlocks([]);
@@ -22,11 +28,17 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onLiv
     }
     // refId is a bible_books.id, so the translation is already baked in.
     if (activeItem.type === 'bible' && activeItem.chapter != null) {
-      window.api.getVersesForChapter(activeItem.refId, activeItem.chapter).then(setVerses);
-      setBlocks([]);
+      window.api.getVersesForChapter(activeItem.refId, activeItem.chapter).then((result) => {
+        if (isStale()) return;
+        setVerses(result);
+        setBlocks([]);
+      });
     } else if (activeItem.type === 'song') {
-      window.api.getBlocksForSong(activeItem.refId).then(setBlocks);
-      setVerses([]);
+      window.api.getBlocksForSong(activeItem.refId).then((result) => {
+        if (isStale()) return;
+        setBlocks(result);
+        setVerses([]);
+      });
     }
   }, [activeItem]);
 

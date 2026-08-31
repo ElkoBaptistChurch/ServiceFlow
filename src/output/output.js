@@ -31,10 +31,11 @@ function connect() {
   socket.addEventListener('error', () => socket.close());
 }
 
-fetch('/api/state')
-  .then((res) => res.json())
-  .then(render)
-  .catch(() => {});
+// No load-time fetch('/api/state') here: the server already pushes the current state
+// synchronously inside its WebSocket 'connection' handler (see server.ts), which is what
+// makes OBS self-heal on reconnect. A separate fetch raced that push -- render() assigns
+// unconditionally, so a slow fetch resolving AFTER a live_update could revert the output
+// to older content, and it would not self-heal again until the next change.
 
 // A Browser Source can be resized after the fact; re-fit rather than overflow.
 window.addEventListener('resize', () => render(null));

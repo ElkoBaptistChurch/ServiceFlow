@@ -35,6 +35,45 @@ describe('SettingsScreen', () => {
     expect(await screen.findByText('http://192.168.1.20:4180/output')).toBeInTheDocument();
   });
 
+  // M3: the spec requires copy-to-clipboard buttons beside each URL, with visible
+  // confirmation, for a non-technical volunteer hand-transcribing the URL into OBS.
+  it('copies the local URL to the clipboard and confirms it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    render(<SettingsScreen onTranslationChange={vi.fn()} />);
+    await screen.findByText('http://localhost:4180/output');
+
+    fireEvent.click(screen.getByRole('button', { name: /copy same-computer url/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('http://localhost:4180/output'));
+    expect(await screen.findByText(/copied/i)).toBeInTheDocument();
+  });
+
+  it('copies the LAN URL independently from the local URL', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    render(<SettingsScreen onTranslationChange={vi.fn()} />);
+    await screen.findByText('http://192.168.1.20:4180/output');
+
+    fireEvent.click(screen.getByRole('button', { name: /copy same-network url/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('http://192.168.1.20:4180/output'));
+  });
+
+  // navigator.clipboard is not guaranteed to exist (older OBS embedded browsers, jsdom by
+  // default) and writeText() can reject (denied permission). Neither should throw and take
+  // down the Settings screen -- the URL is still there in plain text to select by hand.
+  it('does not throw when the clipboard API is unavailable', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+
+    render(<SettingsScreen onTranslationChange={vi.fn()} />);
+    await screen.findByText('http://localhost:4180/output');
+
+    expect(() => fireEvent.click(screen.getByRole('button', { name: /copy same-computer url/i }))).not.toThrow();
+  });
+
   it('sets the active bible style independently from the song style', async () => {
     render(<SettingsScreen onTranslationChange={vi.fn()} />);
     const bibleMinimal = await screen.findByRole('button', { name: /bible.*minimal caption/i });

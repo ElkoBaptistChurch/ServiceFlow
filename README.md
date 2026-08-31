@@ -133,3 +133,10 @@ import step replaces.
 - This is a v1 build: no auto-update and no code signing (hence the
   SmartScreen warning above), single-operator use only, and no in-app preview
   of the OBS output — use OBS's own source preview to confirm what's live.
+- Song titles must be unique within an import: two OpenLP songs sharing the
+  exact same title would merge into one on import. This isn't the case
+  today — all 556 imported titles are distinct — but worth knowing if the
+  church's song list grows.
+- Because the NKJV file is only a partial sample, browsing to a book it has
+  no verses for (Romans, for example) shows an empty chapter list with no
+  explanation. KJV is unaffected.

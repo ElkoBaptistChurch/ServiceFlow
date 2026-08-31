@@ -13,6 +13,23 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
   const [translations, setTranslations] = useState<string[]>([]);
   const [translation, setTranslation] = useState<string>('');
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  // Which URL was just copied, so the button can confirm it worked. A non-technical
+  // volunteer hand-transcribing an IP-and-port URL into OBS is exactly the situation a
+  // silent no-op (or a silent throw, if navigator.clipboard is unavailable) would hurt.
+  const [justCopied, setJustCopied] = useState<'local' | 'lan' | null>(null);
+
+  async function copyUrl(kind: 'local' | 'lan', url: string) {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(url);
+      setJustCopied(kind);
+      setTimeout(() => setJustCopied((current) => (current === kind ? null : current)), 2000);
+    } catch {
+      // Clipboard access can be unavailable or rejected (older OBS embedded browsers,
+      // permissions, non-secure context). Fail quietly rather than throwing -- the URL is
+      // still right there in plain text for the operator to select and copy by hand.
+    }
+  }
 
   const loadTranslations = () => {
     window.api.listTranslations().then(setTranslations);
@@ -71,10 +88,22 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
         <h3>OBS Browser Source URLs</h3>
         {urls && (
           <ul>
-            <li>Same computer: <span>{urls.local}</span></li>
+            <li>
+              Same computer: <span>{urls.local}</span>{' '}
+              <button type="button" aria-label="Copy same-computer URL" onClick={() => copyUrl('local', urls.local)}>
+                {justCopied === 'local' ? 'Copied!' : 'Copy'}
+              </button>
+            </li>
             {urls.lan && (
               <li>
-                Same network (other computer): <span>{urls.lan}</span>
+                Same network (other computer): <span>{urls.lan}</span>{' '}
+                <button
+                  type="button"
+                  aria-label="Copy same-network URL"
+                  onClick={() => copyUrl('lan', urls.lan as string)}
+                >
+                  {justCopied === 'lan' ? 'Copied!' : 'Copy'}
+                </button>
               </li>
             )}
           </ul>

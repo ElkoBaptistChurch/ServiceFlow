@@ -24,6 +24,9 @@ beforeEach(() => {
     findBibleBooks: vi.fn().mockResolvedValue([]),
     findSongsByTitle: vi.fn().mockResolvedValue([]),
     getBlocksForSong: vi.fn().mockResolvedValue([]),
+    getVersesForChapter: vi.fn().mockResolvedValue([]),
+    unstageItem: vi.fn().mockResolvedValue(undefined),
+    setLiveState: vi.fn().mockResolvedValue(EMPTY_LIVE),
   };
 });
 
@@ -104,5 +107,89 @@ describe('App', () => {
     );
 
     expect(await screen.findByText(/disk is full/i)).toBeInTheDocument();
+  });
+
+  // I2: removing the active staged item must not leave the content pane rendering a
+  // ghost whose click could carry a deleted staged-item id into setLiveState -- which,
+  // if a DIFFERENT item was actually live, would blank the OBS output entirely.
+  it('clears the content pane when the active staged item is removed from the list', async () => {
+    let stagedItems = [
+      { id: 1, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' },
+      { id: 2, type: 'song' as const, refId: 1, chapter: null, position: 1, label: 'Amazing Grace' },
+    ];
+    (window.api.getStagedItems as any).mockImplementation(() => Promise.resolve(stagedItems));
+    (window.api.unstageItem as any).mockImplementation((id: number) => {
+      stagedItems = stagedItems.filter((item) => item.id !== id);
+      return Promise.resolve(undefined);
+    });
+    (window.api.getVersesForChapter as any).mockResolvedValue([
+      { id: 100, bookId: 7, chapter: 3, verse: 16, text: 'For God so loved the world.' },
+    ]);
+
+    render(<App />);
+    await screen.findByText('John 3 (KJV)');
+
+    fireEvent.click(screen.getByText('John 3 (KJV)'));
+    expect(await screen.findByText(/For God so loved the world/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /remove john 3/i }));
+
+    await waitFor(() => expect(window.api.unstageItem).toHaveBeenCalledWith(1));
+    // The ghost must be gone: no stale verses rendered, and the pane falls back to its
+    // "nothing selected" state rather than something clickable that could carry id 1.
+    await waitFor(() => expect(screen.queryByText(/For God so loved the world/)).not.toBeInTheDocument());
+    expect(screen.getByText(/no item selected/i)).toBeInTheDocument();
+  });
+
+  // M2: crash recovery restores the live item at the persistence layer, but the content
+  // pane and arrow keys are dead until the operator clicks a staged entry again unless
+  // App also re-selects that item as active on startup.
+  it('makes the previously-live item active on startup, without any click', async () => {
+    (window.api.getStagedItems as any).mockResolvedValue([
+      { id: 1, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' },
+      { id: 2, type: 'song' as const, refId: 1, chapter: null, position: 1, label: 'Amazing Grace' },
+    ]);
+    (window.api.getLiveState as any).mockResolvedValue({
+      stagedItemId: 2,
+      verseOrBlockId: 201,
+      styleId: null,
+      hidden: false,
+      updatedAt: '2026-08-30T00:00:00.000Z',
+      reference: 'Amazing Grace',
+    });
+    (window.api.getBlocksForSong as any).mockResolvedValue([
+      { id: 201, songId: 1, label: 'V1', text: 'Amazing grace, how sweet the sound', displayOrder: 0 },
+    ]);
+
+    render(<App />);
+
+    // No click on the staged list -- the content pane must populate on its own.
+    expect(await screen.findByText(/Amazing grace, how sweet the sound/)).toBeInTheDocument();
+  });
+
+  // M4: the Esc handler must not read a stale `liveState.hidden` closure. Two presses
+  // fired before the first IPC round trip resolves must alternate (hide, then restore),
+  // not both send the same value and leave the output stuck blank.
+  it('alternates output visibility on two rapid Esc presses instead of repeating the same value', async () => {
+    const pending: Array<() => void> = [];
+    (window.api.setOutputHidden as any) = vi.fn((hidden: boolean) => {
+      return new Promise((resolve) => {
+        pending.push(() => resolve({ ...EMPTY_LIVE, hidden }));
+      });
+    });
+
+    render(<App />);
+    await screen.findByText(/nothing live/i);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(window.api.setOutputHidden).toHaveBeenCalledTimes(2);
+    expect(window.api.setOutputHidden).toHaveBeenNthCalledWith(1, true);
+    expect(window.api.setOutputHidden).toHaveBeenNthCalledWith(2, false);
+
+    // Flush the deferred responses so no state update lands after the test/cleanup.
+    pending.forEach((resolve) => resolve());
+    await waitFor(() => {});
   });
 });
