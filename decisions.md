@@ -134,3 +134,65 @@ with Ezra), so the importer correctly maps it to `OT` rather than `AP`.
 All 12 books import. The code is right and the documented fact was wrong, so the documents are what
 changed. Anyone later writing a test that asserts "12 books with `testament = 'AP'`" would be
 encoding the error.
+
+---
+
+## D8 — ServiceFlow is single-instance
+
+**Date:** 2026-08-31 · **Status:** Adopted · **Extends:** spec "Error handling"
+
+Nothing in the spec or plan said what happens if the app is launched twice. It matters more than it
+sounds: Electron takes a few seconds to show a window, so a volunteer who double-clicks the Start
+Menu shortcut launches two instances as a matter of course.
+
+Without a lock, the second instance opened the *same* database, failed to bind the preferred port,
+fell back to a random one, and told the operator to re-point OBS at the new URL. Both windows then
+wrote `live_state`, but each broadcast only to its own WebSocket clients — and OBS was connected to
+the first. Reproduced against compiled output: the second window's banner read `LIVE: Psalms 23:1`
+while the socket OBS held still showed `John 3:16`, indefinitely, with no self-heal.
+
+That is exactly the banner-versus-output disagreement the design exists to prevent, so the app now
+takes `app.requestSingleInstanceLock()` **before** opening the database or starting a server. A
+losing instance quits immediately, touching nothing, and hands focus to the window already running.
+
+---
+
+## D9 — Startup failures must be a dialog, never a silent exit
+
+**Date:** 2026-08-31 · **Status:** Adopted · **Confirms:** spec "Error handling"
+
+The spec requires database write failures to surface visibly, on the reasoning that immediate
+persistence is the crash-recovery mechanism and a silent failure is worse than a loud one. That
+protection had a hole at the one moment it matters most: startup.
+
+`app.whenReady().then(createWindow)` had no `.catch`, and `createWindow` is async, so a throw from
+`openDatabase` — a corrupt database after a hard power-off, a read-only `userData` directory, or the
+native-module ABI mismatch D1 describes — became an unhandled rejection and Node terminated the
+process. The volunteer would double-click the icon and see nothing happen at all. The renderer's
+error banner cannot help, because at that point there is no renderer.
+
+Startup failures now show a native error dialog naming what failed, then quit.
+
+---
+
+## D10 — The remaining risk is concentrated in what Linux cannot test
+
+**Date:** 2026-08-31 · **Status:** Open — action required on Windows
+
+Automated coverage is 136 tests, and the whole-branch review walked all seven acceptance criteria.
+Criteria 1, 2, 3, 6 and 7 pass against the church's real files; criterion 2 was verified far beyond
+its spot-check — **all 556 songs** match their source `<verse>` counts exactly.
+
+Criteria 4 and 5 are not verifiable here and are the honest remaining risk:
+
+- **4 (a named verse on stream in under 5 seconds)** — no GUI to time it on. There is no latency
+  obstacle in the code: a 150 ms debounce, then sub-millisecond book, chapter and verse lookups, and
+  a 26 ms worst case for a single-letter full-text search across 36,000 verses. It needs a stopwatch.
+- **5 (every verse fits the 1920×1080 frame)** — no browser to measure in. The mechanism is right
+  (post-render measurement stepping 48 px down to a 24 px floor, under a `max-height: 60vh` ceiling).
+  Esther 8:9 at 534 characters should fit comfortably. **KJV's apocryphal Sirach 1:0 is 3,133
+  characters** and will hit the floor and be clipped by the ceiling rather than overflow the screen —
+  graceful, but confirm it on the real source.
+
+Both belong to the manual OBS pass the spec's testing strategy already requires before first live
+use. See `README.md` for the full Windows checklist.
