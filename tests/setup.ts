@@ -8,6 +8,21 @@ if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+// jsdom does not implement PromiseRejectionEvent; App.test.tsx constructs one directly to
+// simulate an unhandled rejection reaching App's global error-banner listener.
+if (typeof (globalThis as any).PromiseRejectionEvent === 'undefined') {
+  class PromiseRejectionEventPolyfill extends Event {
+    promise: Promise<unknown>;
+    reason: unknown;
+    constructor(type: string, init: EventInit & { promise: Promise<unknown>; reason: unknown }) {
+      super(type, init);
+      this.promise = init.promise;
+      this.reason = init.reason;
+    }
+  }
+  (globalThis as any).PromiseRejectionEvent = PromiseRejectionEventPolyfill;
+}
+
 afterEach(() => {
   cleanup();
 });
