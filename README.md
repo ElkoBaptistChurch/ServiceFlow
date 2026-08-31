@@ -27,11 +27,17 @@ To build it, on a Windows PC with [Node.js](https://nodejs.org) installed:
 git clone <the ServiceFlow repository>
 cd ServiceFlow
 npm install
+npm run rebuild:electron
 npm run package
 ```
 
-`npm install` also compiles the database module for Windows automatically as
-part of that step. When `npm run package` finishes, the installer is at:
+**Do not skip `npm run rebuild:electron`.** `npm install` does *not* compile
+the database module for the app framework automatically — that is
+deliberate, since doing it automatically would make the database module
+unusable by the project's own automated tests. `npm run rebuild:electron` is
+the step that compiles it correctly for the app; skipping it produces an
+installer whose database silently fails the first time the app is opened.
+When `npm run package` finishes, the installer is at:
 
 ```
 release\ServiceFlow-Setup-0.1.0.exe
