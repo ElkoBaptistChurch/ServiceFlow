@@ -69,3 +69,68 @@ Everything is therefore implemented, typechecked and covered by automated tests 
 three checks are explicitly left for the church's Windows PC (or a `windows-latest` CI
 runner): the app opening a window, the real-OBS Browser Source pass described in the spec's
 testing strategy, and building the NSIS installer.
+
+---
+
+## D5 — Bible re-import upserts and never deletes
+
+**Date:** 2026-08-30 · **Status:** Adopted · **Confirms:** spec "OpenLP import"
+
+A review found that re-importing a Bible file removes nothing that was deleted upstream, while
+re-importing songs replaces a song's blocks wholesale. That asymmetry is deliberate and stays.
+
+The spec specifies exactly this: books are upserted by `(translation, source_book_id)` and verses by
+`(book_id, chapter, verse)`, while only *song blocks* are replaced wholesale. Making the Bible side
+delete rows absent from the source would also be actively dangerous with the church's actual files —
+see D6: `New English Translation (NET).sqlite` holds 106 verses and
+`New King James Version (NKJV).sqlite` holds 152. Re-importing one of those over a fuller library
+would erase verses rather than heal anything.
+
+**Known consequence:** a verse renumbered or corrected in OpenLP leaves its old row behind, still
+reachable through content search, until the operator imports into a fresh database. Judged the
+cheaper failure by a wide margin.
+
+---
+
+## D6 — The church's NET and NKJV files are partial, and acceptance criterion 3 is restated
+
+**Date:** 2026-08-30 · **Status:** Adopted · **Amends:** spec acceptance criterion 3
+
+Measured directly from the real files, twice, by two independent agents:
+
+| File | Verses |
+|---|---|
+| `KJV.sqlite` | 36,503 |
+| `New English Translation (NET).sqlite` | 106 |
+| `New King James Version (NKJV).sqlite` | 152 |
+
+NET and NKJV are partial sample databases, not full translations. NET's Romans begins at 7:1 and its
+Acts at 2:1; NKJV's Romans book row contains no verses at all.
+
+This is a **data fact, not a code defect** — all three import cleanly with zero skipped rows, and the
+swapped-source-book-id handling is correct for all three. But it makes acceptance criterion 3
+("spot-check Romans 1:1 and Acts 1:1 in KJV *and* NET") impossible to satisfy as written.
+
+**Restated criterion:** KJV is content-verified at Romans 1:1 ("Paul, a servant…") and Acts 1:1
+("The former treatise…"). NET and NKJV are verified structurally — correct book name against
+`source_book_id`, with the swap direction confirmed — plus content-verified at each book's first
+available verse (NET Acts 2:1, NET Romans 7:1), which does discriminate the two books from each
+other. That is the strongest check these files support.
+
+**Action for the church:** if full NET and NKJV libraries were expected, they need re-downloading in
+OpenLP and re-importing. ServiceFlow will pick up the fuller files with no code change.
+
+---
+
+## D7 — Documented apocrypha fact corrected: 11 books, not 12
+
+**Date:** 2026-08-30 · **Status:** Adopted · **Corrects:** spec + plan "Verified data facts"
+
+Both documents state that KJV carries 12 apocryphal books at source ids 67-78 with
+`testament_reference_id = 3`. The real file has 12 books in that id range, but only **11** carry
+`testament_reference_id = 3` — id 69, "Esdras", is tagged `1` (and shares `book_reference_id` 15
+with Ezra), so the importer correctly maps it to `OT` rather than `AP`.
+
+All 12 books import. The code is right and the documented fact was wrong, so the documents are what
+changed. Anyone later writing a test that asserts "12 books with `testament = 'AP'`" would be
+encoding the error.
