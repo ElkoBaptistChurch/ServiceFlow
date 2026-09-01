@@ -1,7 +1,6 @@
 import path from 'path';
 import Database from 'better-sqlite3';
 import { ImportSourceSummary } from '../../shared/types';
-import { normalizeForSearch } from '../db/fts';
 import { parseSongLyrics, typeCodeToName } from './songXml';
 
 // D-12: tracks, per main database and per source file path, the set of song titles this
@@ -62,15 +61,12 @@ export function importOpenlpSongs(
     const getSongId = mainDb.prepare(`SELECT id FROM songs WHERE title = ?`);
     // Blocks are replaced wholesale rather than upserted: a (type,label) pair can repeat
     // within one song, and a re-import must also drop blocks deleted in OpenLP.
-    const existingBlocks = mainDb.prepare(`SELECT id, text FROM song_blocks WHERE song_id = ?`);
-    const deleteFtsRow = mainDb.prepare(
-      `INSERT INTO song_blocks_fts (song_blocks_fts, rowid, text) VALUES ('delete', ?, ?)`
-    );
+    // D-09: song_blocks_fts is kept in sync by triggers (schema.ts migration 3), not
+    // by hand here — deleteBlocks/insertBlock alone is sufficient.
     const deleteBlocks = mainDb.prepare(`DELETE FROM song_blocks WHERE song_id = ?`);
     const insertBlock = mainDb.prepare(
       `INSERT INTO song_blocks (song_id, label, text, display_order) VALUES (?, ?, ?, ?)`
     );
-    const insertFts = mainDb.prepare(`INSERT INTO song_blocks_fts (rowid, text) VALUES (?, ?)`);
 
     const importedTitlesThisRun = new Set<string>();
     const tx = mainDb.transaction((songRows: any[]) => {
@@ -88,17 +84,10 @@ export function importOpenlpSongs(
           }
           upsertSong.run(row.title, row.ccli_number ?? null);
           const songId = (getSongId.get(row.title) as { id: number }).id;
-          // The FTS 'delete' command must be given the text exactly as it was INDEXED,
-          // i.e. the normalized copy — not the raw stored text.
-          for (const old of existingBlocks.all(songId) as { id: number; text: string }[]) {
-            deleteFtsRow.run(old.id, normalizeForSearch(old.text));
-          }
           deleteBlocks.run(songId);
           blocks.forEach((block, index) => {
             const label = `${typeCodeToName(block.type)} ${block.label}`;
-            const info = insertBlock.run(songId, label, block.text, index);
-            // Index a punctuation-normalized copy; the displayed text keeps its own quotes.
-            insertFts.run(info.lastInsertRowid, normalizeForSearch(block.text));
+            insertBlock.run(songId, label, block.text, index);
           });
           summary.imported += 1;
           importedTitlesThisRun.add(row.title);

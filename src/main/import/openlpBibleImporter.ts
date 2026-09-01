@@ -1,7 +1,6 @@
 import path from 'path';
 import Database from 'better-sqlite3';
 import { ImportSourceSummary, Testament } from '../../shared/types';
-import { normalizeForSearch } from '../db/fts';
 
 function mapTestament(testamentReferenceId: number): Testament {
   if (testamentReferenceId === 1) return 'OT';
@@ -72,7 +71,8 @@ export function importOpenlpBible(
     const getExistingBook = mainDb.prepare(
       `SELECT id, name FROM bible_books WHERE translation = ? AND source_book_id = ?`
     );
-    const getVersesForBook = mainDb.prepare(`SELECT id, text FROM bible_verses WHERE book_id = ?`);
+    // D-09: bible_verses_fts is kept in sync by triggers (schema.ts migration 3), not
+    // by hand here.
     const deleteVersesForBook = mainDb.prepare(`DELETE FROM bible_verses WHERE book_id = ?`);
     const findVerse = mainDb.prepare(
       `SELECT id, text FROM bible_verses WHERE book_id = ? AND chapter = ? AND verse = ?`
@@ -81,10 +81,6 @@ export function importOpenlpBible(
       `INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (?, ?, ?, ?)`
     );
     const updateVerse = mainDb.prepare(`UPDATE bible_verses SET text = ? WHERE id = ?`);
-    const ftsInsert = mainDb.prepare(`INSERT INTO bible_verses_fts (rowid, text) VALUES (?, ?)`);
-    const ftsDelete = mainDb.prepare(
-      `INSERT INTO bible_verses_fts (bible_verses_fts, rowid, text) VALUES ('delete', ?, ?)`
-    );
 
     // Source book ids are only meaningful inside this file, so translate them once here
     // and never let one escape into the rest of the app.
@@ -104,10 +100,7 @@ export function importOpenlpBible(
             // book ids), not a rename. The old ON CONFLICT DO UPDATE just renamed the
             // row in place and left its verses attached, mixing one book's text under
             // another book's name. Wipe this book's verses so the re-import starts
-            // clean; the FTS delete mirrors the updated-verse-text pattern below.
-            for (const v of getVersesForBook.all(existing.id) as { id: number; text: string }[]) {
-              ftsDelete.run(v.id, normalizeForSearch(v.text));
-            }
+            // clean; the FTS delete trigger fires as part of this delete.
             deleteVersesForBook.run(existing.id);
           }
           upsertBook.run(
@@ -154,14 +147,9 @@ export function importOpenlpBible(
             | { id: number; text: string }
             | undefined;
           if (!existing) {
-            const info = insertVerse.run(bookId, v.chapter, v.verse, v.text);
-            ftsInsert.run(info.lastInsertRowid, normalizeForSearch(v.text));
+            insertVerse.run(bookId, v.chapter, v.verse, v.text);
           } else if (existing.text !== v.text) {
-            // Retract the old terms with the text as indexed, then re-index. See the
-            // songs importer note: INSERT OR REPLACE would leave the old words searchable.
-            ftsDelete.run(existing.id, normalizeForSearch(existing.text));
             updateVerse.run(v.text, existing.id);
-            ftsInsert.run(existing.id, normalizeForSearch(v.text));
           }
           summary.imported += 1;
         } catch (err) {

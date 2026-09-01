@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { normalizeForSearch } from './fts';
 
 // Migration 1 — the baseline schema. `live_state` intentionally has no foreign key here;
 // that arrives in migration 2, added as a rebuild rather than an ALTER TABLE because
@@ -122,6 +123,40 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    up(db) {
+      // D-09: keep the FTS index in sync via triggers instead of relying on every
+      // write path to remember to do it by hand — the importers did remember, but
+      // any other delete path (e.g. a cascaded delete from songs -> song_blocks)
+      // would silently orphan FTS rows. The 'delete' + insert pair on UPDATE is the
+      // documented pattern for FTS5 external-content tables. Text must go through
+      // normalize_for_search, the same function the importers already index with,
+      // registered as a SQL function below so the trigger can call it.
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS song_blocks_fts_ai AFTER INSERT ON song_blocks BEGIN
+          INSERT INTO song_blocks_fts(rowid, text) VALUES (new.id, normalize_for_search(new.text));
+        END;
+        CREATE TRIGGER IF NOT EXISTS song_blocks_fts_ad AFTER DELETE ON song_blocks BEGIN
+          INSERT INTO song_blocks_fts(song_blocks_fts, rowid, text) VALUES ('delete', old.id, normalize_for_search(old.text));
+        END;
+        CREATE TRIGGER IF NOT EXISTS song_blocks_fts_au AFTER UPDATE ON song_blocks BEGIN
+          INSERT INTO song_blocks_fts(song_blocks_fts, rowid, text) VALUES ('delete', old.id, normalize_for_search(old.text));
+          INSERT INTO song_blocks_fts(rowid, text) VALUES (new.id, normalize_for_search(new.text));
+        END;
+        CREATE TRIGGER IF NOT EXISTS bible_verses_fts_ai AFTER INSERT ON bible_verses BEGIN
+          INSERT INTO bible_verses_fts(rowid, text) VALUES (new.id, normalize_for_search(new.text));
+        END;
+        CREATE TRIGGER IF NOT EXISTS bible_verses_fts_ad AFTER DELETE ON bible_verses BEGIN
+          INSERT INTO bible_verses_fts(bible_verses_fts, rowid, text) VALUES ('delete', old.id, normalize_for_search(old.text));
+        END;
+        CREATE TRIGGER IF NOT EXISTS bible_verses_fts_au AFTER UPDATE ON bible_verses BEGIN
+          INSERT INTO bible_verses_fts(bible_verses_fts, rowid, text) VALUES ('delete', old.id, normalize_for_search(old.text));
+          INSERT INTO bible_verses_fts(rowid, text) VALUES (new.id, normalize_for_search(new.text));
+        END;
+      `);
+    },
+  },
 ];
 
 // Keyed on PRAGMA user_version so an existing install only ever runs the steps it's
@@ -130,6 +165,9 @@ const MIGRATIONS: Migration[] = [
 // steps that already landed.
 export function applySchema(db: Database.Database): void {
   db.pragma('foreign_keys = ON');
+  // Backs the FTS sync triggers (migration 3). Registered on every connection since
+  // custom SQL functions aren't persisted in the database file itself.
+  db.function('normalize_for_search', normalizeForSearch);
   const current = db.pragma('user_version', { simple: true }) as number;
   for (const migration of MIGRATIONS) {
     if (migration.version <= current) continue;
