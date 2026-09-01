@@ -55,23 +55,55 @@ function mockElectron(lockAcquired: boolean): ElectronMock {
   return mock;
 }
 
-function mockMainProcessModules(opts: { openDatabaseImpl?: () => unknown } = {}) {
+function mockMainProcessModules(
+  opts: {
+    openDatabaseImpl?: () => unknown;
+    /** Defaults to "just now" (fresh) so M-04's staleness check is opt-in per test. */
+    liveStateUpdatedAt?: string;
+    /** The value settingsRepo.getSetting returns for the last-bound-port key. */
+    storedPort?: string | null;
+  } = {}
+) {
   const openDatabase = vi.fn(opts.openDatabaseImpl ?? (() => ({ fakeDb: true })));
   const seedDefaultOutputStyles = vi.fn();
   const serverHandle = {
     start: vi.fn().mockResolvedValue(4180),
     stop: vi.fn().mockResolvedValue(undefined),
     broadcastLiveUpdate: vi.fn(),
+    getClientCount: vi.fn(() => 0),
   };
   const createServer = vi.fn(() => serverHandle);
   const registerIpcHandlers = vi.fn();
+  const getLiveState = vi.fn(() => ({
+    stagedItemId: null,
+    verseOrBlockId: null,
+    styleId: null,
+    hidden: false,
+    updatedAt: opts.liveStateUpdatedAt ?? new Date().toISOString(),
+    reference: null,
+  }));
+  const setOutputHidden = vi.fn();
+  const getSetting = vi.fn(() => opts.storedPort ?? null);
+  const setSetting = vi.fn();
 
   vi.doMock('../../../src/main/db/client', () => ({ openDatabase }));
   vi.doMock('../../../src/main/db/outputStylesRepository', () => ({ seedDefaultOutputStyles }));
+  vi.doMock('../../../src/main/db/liveStateRepository', () => ({ getLiveState, setOutputHidden }));
+  vi.doMock('../../../src/main/db/settingsRepository', () => ({ getSetting, setSetting }));
   vi.doMock('../../../src/main/server/server', () => ({ createServer }));
   vi.doMock('../../../src/main/ipc/handlers', () => ({ registerIpcHandlers }));
 
-  return { openDatabase, seedDefaultOutputStyles, createServer, serverHandle, registerIpcHandlers };
+  return {
+    openDatabase,
+    seedDefaultOutputStyles,
+    createServer,
+    serverHandle,
+    registerIpcHandlers,
+    getLiveState,
+    setOutputHidden,
+    getSetting,
+    setSetting,
+  };
 }
 
 beforeEach(() => {
@@ -149,5 +181,100 @@ describe('main/index.ts startup orchestration', () => {
     } finally {
       process.removeListener('unhandledRejection', onUnhandledRejection);
     }
+  });
+
+  // Regression for M-14: the single-instance lock's whole purpose is a volunteer double-
+  // clicking the Start Menu shortcut while the first launch is still starting up. Firing
+  // 'second-instance' before mainWindowRef exists must not silently no-op.
+  it('focuses the window for a second instance that arrives during startup', async () => {
+    const electron = mockElectron(true);
+    mockMainProcessModules();
+
+    await import('../../../src/main/index');
+
+    const secondInstanceCall = electron.app.on.mock.calls.find(([event]) => event === 'second-instance');
+    expect(secondInstanceCall).toBeDefined();
+    const secondInstanceHandler = secondInstanceCall![1] as () => void;
+    // Fire it before BrowserWindow has been constructed -- createWindow's awaited
+    // server.start() has not resolved yet at this point.
+    secondInstanceHandler();
+
+    await vi.waitFor(() => {
+      expect(electron.BrowserWindow).toHaveBeenCalled();
+    });
+
+    expect(electron.browserWindowInstance.focus).toHaveBeenCalled();
+  });
+
+  // Regression for M-04: without an age bound, last week's live_state resurfaces on OBS
+  // the instant it reconnects, well before the service the volunteer is setting up for.
+  it('does not restore live state from a previous session', async () => {
+    mockElectron(true);
+    const staleUpdatedAt = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(); // 5h old
+    const modules = mockMainProcessModules({ liveStateUpdatedAt: staleUpdatedAt });
+
+    await import('../../../src/main/index');
+
+    await vi.waitFor(() => {
+      expect(modules.setOutputHidden).toHaveBeenCalledWith(expect.anything(), true);
+    });
+  });
+
+  it('leaves a recent live state alone so in-session crash recovery keeps working', async () => {
+    mockElectron(true);
+    const freshUpdatedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30m old
+    const modules = mockMainProcessModules({ liveStateUpdatedAt: freshUpdatedAt });
+
+    await import('../../../src/main/index');
+
+    await vi.waitFor(() => {
+      expect(modules.createServer).toHaveBeenCalled();
+    });
+    expect(modules.setOutputHidden).not.toHaveBeenCalled();
+  });
+
+  // Regression for M-05: without persisting the bound port, a fallback port freed up the
+  // following week means the app silently binds DEFAULT_PORT again while OBS is still
+  // pointed at last week's fallback URL.
+  it('reuses the previously bound port on the next launch', async () => {
+    mockElectron(true);
+    const modules = mockMainProcessModules({ storedPort: '51234' });
+
+    await import('../../../src/main/index');
+
+    await vi.waitFor(() => {
+      expect(modules.serverHandle.start).toHaveBeenCalledWith(51234);
+    });
+    await vi.waitFor(() => {
+      expect(modules.setSetting).toHaveBeenCalledWith(expect.anything(), expect.any(String), '4180');
+    });
+  });
+
+  // Regression for M-02 (depends on M-06): quitting with a verse live must not leave it
+  // burned on the stream indefinitely -- only a manual OBS "Refresh browser source" clears
+  // it today.
+  it('broadcasts a blank payload and stops the server on quit', async () => {
+    const electron = mockElectron(true);
+    const modules = mockMainProcessModules();
+
+    await import('../../../src/main/index');
+
+    await vi.waitFor(() => {
+      expect(modules.createServer).toHaveBeenCalled();
+    });
+
+    const beforeQuitCall = electron.app.on.mock.calls.find(([event]) => event === 'before-quit');
+    expect(beforeQuitCall).toBeDefined();
+    const beforeQuitHandler = beforeQuitCall![1] as (e: { preventDefault: () => void }) => void;
+    const event = { preventDefault: vi.fn() };
+    beforeQuitHandler(event);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(modules.setOutputHidden).toHaveBeenCalledWith(expect.anything(), true);
+      expect(modules.serverHandle.broadcastLiveUpdate).toHaveBeenCalled();
+      expect(modules.serverHandle.stop).toHaveBeenCalled();
+      expect(electron.app.quit).toHaveBeenCalled();
+    });
   });
 });
