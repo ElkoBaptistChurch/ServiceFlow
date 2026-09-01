@@ -1,6 +1,9 @@
 import Database from 'better-sqlite3';
 
-const SCHEMA_SQL = `
+// Migration 1 — the baseline schema. `live_state` intentionally has no foreign key here;
+// that arrives in migration 2, added as a rebuild rather than an ALTER TABLE because
+// SQLite cannot add a foreign key constraint to an existing table.
+const BASELINE_SCHEMA_SQL = `
 -- Books are keyed by (translation, source_book_id) because OpenLP's own book ids
 -- are NOT stable across translation files: KJV's 44 is Romans, NET's 44 is Acts.
 -- Everything downstream references this table's surrogate id, so a verse can
@@ -85,8 +88,54 @@ CREATE TABLE IF NOT EXISTS output_styles (
 );
 `;
 
+interface Migration {
+  version: number;
+  up(db: Database.Database): void;
+}
+
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    up(db) {
+      db.exec(BASELINE_SCHEMA_SQL);
+      db.prepare(`INSERT OR IGNORE INTO live_state (id, updated_at) VALUES (1, ?)`).run(new Date().toISOString());
+    },
+  },
+  {
+    version: 2,
+    up(db) {
+      // D-04: give live_state.staged_item_id a real FK now that staged_items exists.
+      // ref_id on staged_items stays unconstrained — it's polymorphic across bible/song
+      // ids, so a real FK there is impossible (see the comment on staged_items above).
+      db.exec(`
+        CREATE TABLE live_state_new (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          staged_item_id INTEGER REFERENCES staged_items(id) ON DELETE SET NULL,
+          verse_or_block_id INTEGER,
+          style_id INTEGER,
+          hidden INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO live_state_new SELECT id, staged_item_id, verse_or_block_id, style_id, hidden, updated_at FROM live_state;
+        DROP TABLE live_state;
+        ALTER TABLE live_state_new RENAME TO live_state;
+      `);
+    },
+  },
+];
+
+// Keyed on PRAGMA user_version so an existing install only ever runs the steps it's
+// missing; a fresh database runs every step in order. Each step commits its own
+// user_version bump so a crash mid-migration resumes cleanly rather than re-running
+// steps that already landed.
 export function applySchema(db: Database.Database): void {
   db.pragma('foreign_keys = ON');
-  db.exec(SCHEMA_SQL);
-  db.prepare(`INSERT OR IGNORE INTO live_state (id, updated_at) VALUES (1, ?)`).run(new Date().toISOString());
+  const current = db.pragma('user_version', { simple: true }) as number;
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= current) continue;
+    db.transaction(() => {
+      migration.up(db);
+      db.pragma(`user_version = ${migration.version}`);
+    })();
+  }
 }

@@ -25,7 +25,14 @@ export function getActiveStyle(db: Database.Database, contentType: ContentType):
 export function setActiveStyle(db: Database.Database, contentType: ContentType, styleId: number): void {
   const tx = db.transaction(() => {
     db.prepare(`UPDATE output_styles SET is_active = 0 WHERE content_type = ?`).run(contentType);
-    db.prepare(`UPDATE output_styles SET is_active = 1 WHERE id = ? AND content_type = ?`).run(styleId, contentType);
+    const result = db
+      .prepare(`UPDATE output_styles SET is_active = 1 WHERE id = ? AND content_type = ?`)
+      .run(styleId, contentType);
+    // A styleId from the wrong content type (or a nonexistent one) matches zero rows here,
+    // which would otherwise commit with every style of this content type inactive.
+    if (result.changes !== 1) {
+      throw new Error(`no ${contentType} style with id ${styleId}`);
+    }
   });
   tx();
 }
@@ -42,16 +49,27 @@ const DEFAULT_STYLES: { contentType: ContentType; name: string; templateKey: str
 ];
 
 export function seedDefaultOutputStyles(db: Database.Database): void {
-  const existing = db.prepare(`SELECT COUNT(*) as count FROM output_styles`).get() as { count: number };
-  if (existing.count > 0) return;
+  // Guarding on a global COUNT(*) means a style added to DEFAULT_STYLES in a later
+  // release never reaches an existing install, since the very first seed already made
+  // the count positive. Guard per style key instead, so new presets still land.
+  const existingKeys = new Set(
+    (db.prepare(`SELECT template_key FROM output_styles`).all() as { template_key: string }[]).map(
+      (r) => r.template_key
+    )
+  );
+  const hasAnyOfType = new Set(
+    (db.prepare(`SELECT DISTINCT content_type FROM output_styles`).all() as { content_type: ContentType }[]).map(
+      (r) => r.content_type
+    )
+  );
   const insert = db.prepare(
     `INSERT INTO output_styles (content_type, name, template_key, settings, is_active) VALUES (?, ?, ?, '{}', ?)`
   );
   const tx = db.transaction(() => {
-    const seenTypes = new Set<ContentType>();
     for (const style of DEFAULT_STYLES) {
-      const isFirstOfType = !seenTypes.has(style.contentType);
-      seenTypes.add(style.contentType);
+      if (existingKeys.has(style.templateKey)) continue;
+      const isFirstOfType = !hasAnyOfType.has(style.contentType);
+      hasAnyOfType.add(style.contentType);
       insert.run(style.contentType, style.name, style.templateKey, isFirstOfType ? 1 : 0);
     }
   });

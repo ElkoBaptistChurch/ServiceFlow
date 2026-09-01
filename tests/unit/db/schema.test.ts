@@ -91,4 +91,34 @@ describe('applySchema', () => {
     insert.run('It makes the wounded spirit whole', 1);
     expect(db.prepare(`SELECT COUNT(*) as c FROM song_blocks`).get()).toEqual({ c: 2 });
   });
+
+  // D-02: an install that predates the migration runner has every table but
+  // PRAGMA user_version = 0. Applying the schema again must bring it fully current
+  // instead of silently doing nothing because the tables already exist.
+  it('applies pending migrations to an existing database', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    // Roll back to the pre-migration-runner state: tables exist, version is unset.
+    db.pragma('user_version = 0');
+    applySchema(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(2);
+    const columns = (db.prepare(`PRAGMA table_info(live_state)`).all() as { name: string }[]).map((c) => c.name);
+    expect(columns).toContain('staged_item_id');
+  });
+
+  // D-04: live_state.staged_item_id now has a real FK, added via the migration runner
+  // since SQLite can't ALTER TABLE to add one to an existing table.
+  it('clears live state when its staged item is deleted', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const stagedItemId = db
+      .prepare(`INSERT INTO staged_items (type, ref_id, chapter, position) VALUES ('song', 1, NULL, 0)`)
+      .run().lastInsertRowid;
+    db.prepare(`UPDATE live_state SET staged_item_id = ? WHERE id = 1`).run(stagedItemId);
+    db.prepare(`DELETE FROM staged_items WHERE id = ?`).run(stagedItemId);
+    const row = db.prepare(`SELECT staged_item_id FROM live_state WHERE id = 1`).get() as {
+      staged_item_id: number | null;
+    };
+    expect(row.staged_item_id).toBeNull();
+  });
 });

@@ -68,4 +68,15 @@ describe('liveStateRepository', () => {
     expect(cleared.stagedItemId).toBeNull();
     expect(cleared.reference).toBeNull();
   });
+
+  // D-11: the singleton row can't reach 0 rows through the repository's own API, but
+  // can via a migration that recreates the table — fall back rather than throwing.
+  it('returns an empty live state when the row is missing', () => {
+    db.prepare(`DELETE FROM live_state`).run();
+    const state = getLiveState(db);
+    expect(state.stagedItemId).toBeNull();
+    expect(state.verseOrBlockId).toBeNull();
+    expect(state.hidden).toBe(false);
+    expect(state.reference).toBeNull();
+  });
 });
