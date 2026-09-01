@@ -196,3 +196,30 @@ Criteria 4 and 5 are not verifiable here and are the honest remaining risk:
 
 Both belong to the manual OBS pass the spec's testing strategy already requires before first live
 use. See `README.md` for the full Windows checklist.
+[37m
+[0m[3m[32m## D11 — The preload is bundled, and renderer assets are relative
+[0m[37m
+[0m[1m[30m**[0m[1m[32mDate[0m:[1m[30m**[0m[37m [0m[1m[30m2026[0m[1m[30m-[0m[1m[30m08[0m[1m[30m-[0m[1m[30m31[0m[37m [0m·[37m [0m[1m[30m**[0mStatus:[1m[30m**[0m[37m [0mClosed[37m [0m—[37m [0mfixed,[37m [0mpending[37m [0mconfirmation[37m [0m[1m[1m[35mon[0m[37m [0mWindows[37m
+
+[0mD10[37m [0mpredicted[37m [0mthe[37m [0mresidual[37m [0mrisk[37m [0msat[37m [0m[1m[1m[35min[0m[37m [0mwhat[37m [0mLinux[37m [0mcannot[37m [0mexercise.[37m [0mThe[37m [0mfirst[37m [0mCI[1m[30m-[0mbuilt[37m [0minstaller[37m
+[0mduly[37m [0mfailed[37m [0m[1m[1m[35mon[0m[37m [0mlaunch,[37m [0m[1m[1m[35min[0m[37m [0mtwo[37m [0mways[37m [0mthat[37m [0mare[37m [0minvisible[37m [0m[1m[1m[35mto[0m[37m [0mthe[37m [0mdev[37m [0mserver[37m [0m[1m[1m[35mand[0m[37m [0m[1m[1m[35mto[0m[37m [0mevery[37m [0munit[37m [0mtest:[37m
+
+[0m[1m[30m-[0m[37m [0m[1m[30m**[0mThe[37m [0mpreload[37m [0mcould[37m [0m[1m[1m[35mnot[0m[37m [0m[1m[1m[35mload[0m.[1m[30m**[0m[37m [0m[1m[30m`[0mwebPreferences[1m[30m`[0m[37m [0mdoes[37m [0m[1m[1m[35mnot[0m[37m [0m[1m[32mset[0m[37m [0m[1m[30m`[0msandbox[1m[30m`[0m,[37m [0m[1m[1m[35mand[0m[37m [0mElectron[37m [0mhas[37m
+  [0mdefaulted[37m [0mit[37m [0m[1m[1m[35mto[0m[37m [0m[1m[30m`[0m[31mtrue[0m[1m[30m`[0m[37m [0msince[37m [0mv20,[37m [0mso[37m [0m[1m[30m`[0mpreload.js[1m[30m`[0m[37m [0mruns[37m [0msandboxed.[37m [0mA[37m [0msandboxed[37m [0mpreload[37m [0mgets[37m [0ma[37m
+  [0mrestricted[37m [0m[1m[30m`[0m[1m[1m[35mrequire[0m[1m[30m`[0m[37m [0mthat[37m [0mresolves[37m [0monly[37m [0mbuilt[1m[30m-[0m[1m[1m[35min[0m[37m [0mElectron[1m[30m/[0mNode[37m [0mmodules[37m [0m—[37m [0mits[37m
+  [0m[1m[30m`[0m[1m[1m[35mrequire[0m([1m[30m'../shared/ipcChannels'[0m)[1m[30m`[0m,[37m [0memitted[37m [0m[1m[1m[35mby[0m[37m [0m[1m[30m`[0mtsc[1m[30m`[0m,[37m [0mthrew[37m [0m[1m[30m"module not found"[0m,[37m [0mthe[37m [0mwhole[37m
+  [0mpreload[37m [0mwas[37m [0mdiscarded,[37m [0m[1m[1m[35mand[0m[37m [0m[1m[30m`[0mwindow.api[1m[30m`[0m[37m [0mwas[37m [0mnever[37m [0mdefined.[37m
+  [0m[1m[30m**[0mDecision:[1m[30m**[0m[37m [0mbundle[37m [0m[1m[30m`[0mpreload.ts[1m[30m`[0m[37m [0m[1m[1m[35mwith[0m[37m [0mesbuild[37m [0m[1m[1m[35minto[0m[37m [0mone[37m [0mself[1m[30m-[0mcontained[37m [0mfile[37m [0mrather[37m [0mthan[37m [0m[1m[32mset[0m[37m
+  [0m[1m[30m`[0msandbox:[37m [0m[31mfalse[0m[1m[30m`[0m.[37m [0mKeeping[37m [0mElectron[1m[30m's secure default costs one build step; turning the sandbox
+  off to accommodate our build layout would trade a real protection for convenience.
+  `tsconfig.main.json` now excludes `preload.ts` from emit (so `tsc` cannot race esbuild over that
+  path in watch mode) and `tsconfig.preload.json` typechecks it, since esbuild does not.
+- **The renderer'[0ms[37m [0mscript[37m [0m[1m[30m404[0m[1m[30m'd.** Vite'[0ms[37m [0m[1m[1m[35mdefault[0m[37m [0m[1m[30m`[0mbase[1m[30m`[0m[37m [0mof[37m [0m[1m[30m`/`[0m[37m [0memits[37m [0m[1m[30m`[0msrc[1m[30m=[0m[1m[30m"/assets/…"[0m[1m[30m`[0m,[37m [0mwhich[37m [0mover[37m
+  [0m[1m[30m`[0mfile:[1m[30m//`[0m[37m [0mresolves[37m [0magainst[37m [0mthe[37m [0mfilesystem[37m [0mroot.[37m [0m[1m[30m**[0mDecision:[1m[30m**[0m[37m [0m[1m[30m`[0mbase:[37m [0m[1m[30m'./'[0m[1m[30m`[0m.[37m
+
+[0m[1m[1m[35mBoth[0m[37m [0mwere[37m [0mdev[1m[30m/[0mprod[37m [0mdivergences:[37m [0m[1m[30m`[0mloadURL[1m[30m`[0m[37m [0mover[37m [0mhttp[37m [0mmade[37m [0m[1m[1m[35meach[0m[37m [0mone[37m [0mwork[37m [0m[1m[1m[35min[0m[37m [0mdevelopment.[37m
+[0m[1m[30m`[0mtests[1m[30m/[0mintegration[1m[30m/[0mpackagedRendererAssets.test.ts[1m[30m`[0m[37m [0mnow[37m [0masserts[37m [0m[1m[1m[35mboth[0m[37m [0magainst[37m [0mthe[37m [0m[1m[32mreal[0m[37m [0mbuilt[37m [0mtree,[37m
+[0malongside[37m [0mthe[37m [0mexisting[37m [0m[1m[30m`[0mpackagedOutputPath[1m[30m`[0m[37m [0mchecks.[37m [0mTest[37m [0mcount[37m [0m[1m[30m136[0m[37m [0m→[37m [0m[1m[30m139[0m.[37m
+
+[0mNeither[37m [0mbug[37m [0mwas[37m [0mintroduced[37m [0m[1m[1m[35mby[0m[37m [0mCI[37m [0m—[37m [0mCI[37m [0monly[37m [0mmade[37m [0mthem[37m [0mreachable,[37m [0mwhich[37m [0m[1m[1m[35mis[0m[37m [0mthe[37m [0mpoint[37m [0mof[37m [0mit.[37m
+[0m

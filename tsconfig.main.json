@@ -11,5 +11,11 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src/main/**/*", "src/shared/**/*"]
+  "include": ["src/main/**/*", "src/shared/**/*"],
+  // The preload script is built by esbuild instead (see `build:preload`), because a
+  // sandboxed preload cannot `require()` sibling files and so must be one self-contained
+  // bundle. Excluding it here keeps tsc from also emitting an unbundled dist/main/preload.js
+  // and racing esbuild over that path in watch mode. It is still typechecked, via
+  // tsconfig.preload.json.
+  "exclude": ["src/main/preload.ts"]
 }

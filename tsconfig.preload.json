@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.main.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  // tsconfig.main.json excludes preload.ts from its emit; clearing `exclude` here is what
+  // lets this config pick it back up for typechecking only. esbuild bundles preload.ts
+  // without typechecking it, so without this config the preload would ship unchecked.
+  "exclude": [],
+  "include": ["src/main/preload.ts", "src/shared/**/*"]
+}
