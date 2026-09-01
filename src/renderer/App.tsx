@@ -75,8 +75,11 @@ export default function App() {
     return () => window.removeEventListener('unhandledrejection', onRejection);
   }, []);
 
-  function handleStaged(item: StagedItem, entryId: number | null) {
-    refreshStagedItems();
+  async function handleStaged(item: StagedItem, entryId: number | null) {
+    // Await the refresh before selecting: the ghost-cleanup effect below reads `items` in
+    // the same render pass, and if `items` is still the pre-stage list it wrongly concludes
+    // this item was removed and deselects it out from under the operator (R-01).
+    await refreshStagedItems();
     setActiveItem(item);
     setFocusEntryId(entryId); // content search jumps to the matched verse/block
   }
@@ -85,6 +88,8 @@ export default function App() {
     setActiveItem(item);
     setFocusEntryId(null);
   }
+
+  const clearFocusEntry = useCallback(() => setFocusEntryId(null), []);
 
   // The IPC round-trip for setOutputHidden takes real time; a second Esc pressed before the
   // first response lands would otherwise read the same stale `liveState.hidden` closure and
@@ -104,14 +109,26 @@ export default function App() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      // Autorepeat from a held key must not multiply a one-shot toggle or jump — a held
+      // Escape sent 5 setOutputHidden calls from a single press before this guard existed.
+      if (e.repeat) return;
+
       const target = e.target as HTMLElement | null;
-      // No global shortcut may fire while a text field has focus — an operator typing a
-      // search term must not be able to blank or switch the live output by accident.
+      // No global shortcut may fire while a text field (or a <select>, which is close
+      // enough from the operator's point of view — its own Escape/dropdown-dismiss must
+      // not also blank the live output) has focus.
       const isTypingInField =
-        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable === true;
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable === true;
       if (isTypingInField) return;
 
-      if (e.key === '/' || (e.key.toLowerCase() === 'f' && e.ctrlKey)) {
+      const noModifier = !e.ctrlKey && !e.altKey && !e.metaKey;
+
+      // Ctrl+F is deliberately a modifier shortcut; plain "/" is not, so Ctrl+/ must not
+      // steal focus from whatever the operator actually meant that combo to do.
+      if ((e.key === '/' && noModifier) || (e.key.toLowerCase() === 'f' && e.ctrlKey)) {
         e.preventDefault();
         document.getElementById('search-input')?.focus();
         return;
@@ -123,7 +140,7 @@ export default function App() {
         return;
       }
 
-      if (/^[1-9]$/.test(e.key)) {
+      if (noModifier && /^[1-9]$/.test(e.key)) {
         const index = Number(e.key) - 1;
         if (items[index]) {
           setView('operate');
@@ -155,11 +172,18 @@ export default function App() {
       ) : (
         <div>
           <SearchPanel translation={translation} onStaged={handleStaged} />
-          <StagedList items={items} onSelectActive={selectActive} onChanged={refreshStagedItems} />
+          <StagedList
+            items={items}
+            activeItemId={activeItem?.id ?? null}
+            liveStagedItemId={liveState.stagedItemId}
+            onSelectActive={selectActive}
+            onChanged={refreshStagedItems}
+          />
           <ContentPane
             activeItem={activeItem}
             liveState={liveState}
             focusEntryId={focusEntryId}
+            onFocusHandled={clearFocusEntry}
             onLive={() => window.api.getLiveState().then(setLiveStateValue)}
           />
         </div>

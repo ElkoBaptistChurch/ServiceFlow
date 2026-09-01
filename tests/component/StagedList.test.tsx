@@ -16,23 +16,51 @@ beforeEach(() => {
 
 describe('StagedList', () => {
   it('renders every staged item label', () => {
-    render(<StagedList items={items} onSelectActive={vi.fn()} onChanged={vi.fn()} />);
+    render(<StagedList items={items} activeItemId={null} liveStagedItemId={null} onSelectActive={vi.fn()} onChanged={vi.fn()} />);
     expect(screen.getByText('John 3 (KJV)')).toBeInTheDocument();
     expect(screen.getByText('Amazing Grace')).toBeInTheDocument();
   });
 
   it('calls onSelectActive when an item is clicked', () => {
     const onSelectActive = vi.fn();
-    render(<StagedList items={items} onSelectActive={onSelectActive} onChanged={vi.fn()} />);
+    render(<StagedList items={items} activeItemId={null} liveStagedItemId={null} onSelectActive={onSelectActive} onChanged={vi.fn()} />);
     fireEvent.click(screen.getByText('John 3 (KJV)'));
     expect(onSelectActive).toHaveBeenCalledWith(items[0]);
   });
 
   it('unstages an item when its remove button is clicked', async () => {
     const onChanged = vi.fn();
-    render(<StagedList items={items} onSelectActive={vi.fn()} onChanged={onChanged} />);
+    render(<StagedList items={items} activeItemId={null} liveStagedItemId={null} onSelectActive={vi.fn()} onChanged={onChanged} />);
     fireEvent.click(screen.getAllByRole('button', { name: /remove/i })[0]);
     await waitFor(() => expect(window.api.unstageItem).toHaveBeenCalledWith(1));
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  // R-02: the operator must be able to see which item they're browsing, not just which
+  // one is live -- today nothing lights up until a verse actually goes live.
+  it('marks the active item as pressed', () => {
+    render(
+      <StagedList items={items} activeItemId={1} liveStagedItemId={null} onSelectActive={vi.fn()} onChanged={vi.fn()} />
+    );
+    expect(screen.getByRole('button', { name: 'John 3 (KJV)' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Amazing Grace' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  // R-07: reorderStagedItems is fully wired end to end but nothing ever called it -- the
+  // operator had no way to control the running order the 1-9 hotkeys map to.
+  it('reorders items and calls reorderStagedItems with the new order', async () => {
+    render(
+      <StagedList items={items} activeItemId={null} liveStagedItemId={null} onSelectActive={vi.fn()} onChanged={vi.fn()} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /move amazing grace up/i }));
+    await waitFor(() => expect(window.api.reorderStagedItems).toHaveBeenCalledWith([2, 1]));
+  });
+
+  it('renders the 1-9 position number next to each of the first nine items', () => {
+    render(
+      <StagedList items={items} activeItemId={null} liveStagedItemId={null} onSelectActive={vi.fn()} onChanged={vi.fn()} />
+    );
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
   });
 });
