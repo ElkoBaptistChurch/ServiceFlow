@@ -117,6 +117,9 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onFoc
               data-matched={focusEntryId === entry.id ? 'true' : undefined}
               data-blanked={isLiveId(entry.id) && liveState.hidden ? 'true' : undefined}
               aria-pressed={isLiveId(entry.id)}
+              // Same collapsed-line-break defect as O-01's output page: without this the
+              // operator's preview doesn't match what the congregation actually sees.
+              style={{ whiteSpace: 'pre-line' }}
               onClick={(e) => {
                 // Keep focus in the pane so the arrow keys work immediately afterwards.
                 e.currentTarget.closest('ul')?.focus();
