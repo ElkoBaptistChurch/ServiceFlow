@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import net from 'net';
 import WebSocket from 'ws';
@@ -182,5 +182,76 @@ describe('embedded server', () => {
 
     await otherServer.stop();
     await new Promise<void>((resolve) => occupied.close(() => resolve()));
+  });
+
+  // Regression for M-01: a malformed frame (unmasked from a client) makes the underlying
+  // `ws` receiver emit an 'error' event on the per-connection socket. With no listener on
+  // that socket, Node's EventEmitter throws synchronously and takes down the whole process.
+  // If this test file itself dies mid-run, that IS the bug reproducing.
+  it('survives a client protocol error without crashing', async () => {
+    const socket = new WebSocket(`ws://localhost:${port}/ws`);
+    await waitForOpen(socket);
+
+    // A raw unmasked frame is invalid on a client->server connection (RFC 6455 requires
+    // client frames to be masked) and triggers the receiver's WS_ERR_EXPECTED_MASK error.
+    const rawSocket = (socket as any)._socket as net.Socket;
+    rawSocket.write(Buffer.from([0x81, 0x01, 0x00]));
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // The process is still alive and the server still answers -- the actual assertion is
+    // that we got this far at all without the unhandled 'error' throwing.
+    const res = await fetch(`http://localhost:${port}/api/state`);
+    expect(res.status).toBe(200);
+  });
+
+  // Regression for M-06: with an external httpServer, wss.close() waits for `wss.clients`
+  // to drain and httpServer.close() waits for the upgraded connection to end. Neither ever
+  // fires while a client is still connected, so stop() hangs forever.
+  it('stop() resolves while a client is still connected', async () => {
+    const socket = new WebSocket(`ws://localhost:${port}/ws`);
+    await waitForOpen(socket);
+
+    await Promise.race([
+      server.stop(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('stop() did not resolve')), 500)),
+    ]);
+  });
+
+  // Regression for M-07: a half-open connection (the peer vanished without a clean close)
+  // never fires 'close' and stays in wss.clients forever, silently absorbing broadcasts.
+  // Uses its own server with a fast heartbeat so the test doesn't wait out a real 30s cycle.
+  it('terminates a client that stops responding to pings', async () => {
+    const heartbeatServer = createServer(db, { heartbeatIntervalMs: 20 });
+    const heartbeatPort = await heartbeatServer.start(0);
+
+    const socket = new WebSocket(`ws://localhost:${heartbeatPort}/ws`);
+    await waitForOpen(socket);
+    // Simulate a half-open peer: stop answering pings without closing the connection.
+    (socket as any).pong = () => {};
+
+    await vi.waitFor(
+      () => {
+        expect(heartbeatServer.getClientCount()).toBe(0);
+      },
+      { timeout: 2000, interval: 20 }
+    );
+
+    await heartbeatServer.stop();
+  });
+
+  // Regression for M-11: start()'s own error listener is removed on success, and the only
+  // remaining listener is the permanent no-op that exists to swallow EADDRINUSE during
+  // startup. A post-startup error (EMFILE, adapter teardown) must be surfaced, not silently
+  // dropped forever.
+  it('surfaces a post-startup server error', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const httpServer = (server as unknown as { httpServer: import('http').Server }).httpServer;
+      httpServer.emit('error', new Error('EMFILE: too many open files'));
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

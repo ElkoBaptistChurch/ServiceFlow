@@ -77,6 +77,19 @@ describe('stagedItemsRepository', () => {
     expect(items.map((i) => i.position)).toEqual([0, 1]);
   });
 
+  it('returns the existing item instead of staging a duplicate', () => {
+    const first = addStagedItem(db, 'bible', 1, 3);
+    const second = addStagedItem(db, 'bible', 1, 3);
+    expect(second.id).toBe(first.id);
+    expect(getStagedItems(db)).toHaveLength(1);
+  });
+
+  it('still stages a duplicate-looking item that differs by chapter', () => {
+    addStagedItem(db, 'bible', 1, 3);
+    addStagedItem(db, 'bible', 1, 4);
+    expect(getStagedItems(db)).toHaveLength(2);
+  });
+
   it('leaves existing order intact and contiguous when given an empty id list', () => {
     const a = addStagedItem(db, 'bible', 1, 3);
     const b = addStagedItem(db, 'song', 1, null);

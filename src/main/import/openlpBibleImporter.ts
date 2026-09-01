@@ -1,13 +1,19 @@
 import path from 'path';
 import Database from 'better-sqlite3';
 import { ImportSourceSummary, Testament } from '../../shared/types';
-import { normalizeForSearch } from '../db/fts';
 
 function mapTestament(testamentReferenceId: number): Testament {
   if (testamentReferenceId === 1) return 'OT';
   if (testamentReferenceId === 2) return 'NT';
   return 'AP';
 }
+
+// I-09b: tracks, per main database, which full file path claimed a given fallback
+// translation name — so two unrelated files that both lack a metadata name and happen
+// to share a basename (e.g. two folders each containing "bible.sqlite") don't collapse
+// into one translation bucket. Scoped per mainDb so tests using separate in-memory
+// databases don't see each other's history.
+const fallbackNameClaims = new WeakMap<Database.Database, Map<string, string>>();
 
 export function importOpenlpBible(
   mainDb: Database.Database,
@@ -25,20 +31,56 @@ export function importOpenlpBible(
     const meta = source.prepare(`SELECT value FROM metadata WHERE key = 'name'`).get() as
       | { value: string }
       | undefined;
-    const translation = (meta?.value ?? path.basename(openlpBibleDbPath, '.sqlite')).trim();
+    let translation: string;
+    if (meta?.value != null && meta.value.trim() !== '') {
+      translation = meta.value.trim();
+    } else {
+      const fallbackName = path.basename(openlpBibleDbPath, '.sqlite').trim();
+      let claims = fallbackNameClaims.get(mainDb);
+      if (!claims) {
+        claims = new Map();
+        fallbackNameClaims.set(mainDb, claims);
+      }
+      const claimedBy = claims.get(fallbackName);
+      if (claimedBy && claimedBy !== openlpBibleDbPath) {
+        // Two different files with no declared name both fell back to the same
+        // basename — collapsing them into one translation would silently merge two
+        // different bibles' verses (see I-09b). Disambiguate using the parent folder
+        // name, the same detail the operator used to tell the files apart when
+        // picking them.
+        translation = `${fallbackName} (${path.basename(path.dirname(openlpBibleDbPath))})`;
+      } else {
+        translation = fallbackName;
+        claims.set(fallbackName, openlpBibleDbPath);
+      }
+    }
     summary.translation = translation;
 
     const books = source
       .prepare(`SELECT id, name, book_reference_id, testament_reference_id FROM book`)
       .all() as any[];
+    // Read verses before writing anything to mainDb (see D-06 below) — a structural
+    // failure here (not a per-row one) must leave no partial state behind.
+    const verses = source.prepare(`SELECT book_id, chapter, verse, text FROM verse`).all() as any[];
+
     const upsertBook = mainDb.prepare(
       `INSERT INTO bible_books (translation, source_book_id, name, testament, sort_order) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(translation, source_book_id)
        DO UPDATE SET name = excluded.name, testament = excluded.testament, sort_order = excluded.sort_order`
     );
-    const getBookId = mainDb.prepare(
-      `SELECT id FROM bible_books WHERE translation = ? AND source_book_id = ?`
+    const getExistingBook = mainDb.prepare(
+      `SELECT id, name FROM bible_books WHERE translation = ? AND source_book_id = ?`
     );
+    // D-09: bible_verses_fts is kept in sync by triggers (schema.ts migration 3), not
+    // by hand here.
+    const deleteVersesForBook = mainDb.prepare(`DELETE FROM bible_verses WHERE book_id = ?`);
+    const findVerse = mainDb.prepare(
+      `SELECT id, text FROM bible_verses WHERE book_id = ? AND chapter = ? AND verse = ?`
+    );
+    const insertVerse = mainDb.prepare(
+      `INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (?, ?, ?, ?)`
+    );
+    const updateVerse = mainDb.prepare(`UPDATE bible_verses SET text = ? WHERE id = ?`);
 
     // Source book ids are only meaningful inside this file, so translate them once here
     // and never let one escape into the rest of the app.
@@ -51,6 +93,16 @@ export function importOpenlpBible(
             // than letting the NOT NULL constraint on source_book_id throw for us.
             throw new Error('book has a NULL id and cannot be linked to its verses');
           }
+          const existing = getExistingBook.get(translation, b.id) as { id: number; name: string } | undefined;
+          if (existing && b.name != null && existing.name !== b.name) {
+            // D-01: the same (translation, source_book_id) now names a different book —
+            // a different edition of the file (e.g. with/without the Apocrypha shifting
+            // book ids), not a rename. The old ON CONFLICT DO UPDATE just renamed the
+            // row in place and left its verses attached, mixing one book's text under
+            // another book's name. Wipe this book's verses so the re-import starts
+            // clean; the FTS delete trigger fires as part of this delete.
+            deleteVersesForBook.run(existing.id);
+          }
           upsertBook.run(
             translation,
             b.id,
@@ -58,7 +110,7 @@ export function importOpenlpBible(
             mapTestament(b.testament_reference_id),
             b.book_reference_id ?? b.id // display order; NOT a key — KJV reuses 15 twice
           );
-          bookIdBySourceId.set(b.id, (getBookId.get(translation, b.id) as { id: number }).id);
+          bookIdBySourceId.set(b.id, (getExistingBook.get(translation, b.id) as { id: number }).id);
         } catch (err) {
           // A bad book row (e.g. NULL name) must not roll back the whole transaction —
           // that would silently drop every valid book and verse in the file. Any verse
@@ -73,20 +125,6 @@ export function importOpenlpBible(
         }
       });
     });
-    bookTx(books);
-
-    const verses = source.prepare(`SELECT book_id, chapter, verse, text FROM verse`).all() as any[];
-    const findVerse = mainDb.prepare(
-      `SELECT id, text FROM bible_verses WHERE book_id = ? AND chapter = ? AND verse = ?`
-    );
-    const insertVerse = mainDb.prepare(
-      `INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (?, ?, ?, ?)`
-    );
-    const updateVerse = mainDb.prepare(`UPDATE bible_verses SET text = ? WHERE id = ?`);
-    const ftsInsert = mainDb.prepare(`INSERT INTO bible_verses_fts (rowid, text) VALUES (?, ?)`);
-    const ftsDelete = mainDb.prepare(
-      `INSERT INTO bible_verses_fts (bible_verses_fts, rowid, text) VALUES ('delete', ?, ?)`
-    );
 
     const verseTx = mainDb.transaction((verseRows: any[]) => {
       for (const v of verseRows) {
@@ -109,14 +147,9 @@ export function importOpenlpBible(
             | { id: number; text: string }
             | undefined;
           if (!existing) {
-            const info = insertVerse.run(bookId, v.chapter, v.verse, v.text);
-            ftsInsert.run(info.lastInsertRowid, normalizeForSearch(v.text));
+            insertVerse.run(bookId, v.chapter, v.verse, v.text);
           } else if (existing.text !== v.text) {
-            // Retract the old terms with the text as indexed, then re-index. See the
-            // songs importer note: INSERT OR REPLACE would leave the old words searchable.
-            ftsDelete.run(existing.id, normalizeForSearch(existing.text));
             updateVerse.run(v.text, existing.id);
-            ftsInsert.run(existing.id, normalizeForSearch(v.text));
           }
           summary.imported += 1;
         } catch (err) {
@@ -128,7 +161,15 @@ export function importOpenlpBible(
         }
       }
     });
-    verseTx(verses);
+
+    // D-06: one outer transaction so a structural failure anywhere in this file's
+    // import leaves mainDb exactly as it was before this file, rather than with books
+    // committed and verses missing (e.g. the app was killed between the two commits).
+    const importTx = mainDb.transaction(() => {
+      bookTx(books);
+      verseTx(verses);
+    });
+    importTx();
   } finally {
     source.close();
   }

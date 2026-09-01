@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react';
-import type { LiveState, StagedItem } from '../../shared/types';
+import type { StagedItem } from '../../shared/types';
 
 interface Props {
   items: StagedItem[];
-  liveState: LiveState;
+  /** The item the operator is currently browsing in the content pane, if any. */
+  activeItemId: number | null;
+  /** liveState.stagedItemId — which item (if any) is actually on the stream. */
+  liveStagedItemId: number | null;
   onSelectActive: (item: StagedItem) => void;
   onChanged: () => void;
 }
@@ -16,30 +19,59 @@ function badgeFor(index: number): string {
   return '';
 }
 
-export default function StagedList({ items, liveState, onSelectActive, onChanged }: Props) {
+function move(items: StagedItem[], index: number, offset: number): number[] {
+  const target = index + offset;
+  const reordered = items.slice();
+  const [moved] = reordered.splice(index, 1);
+  reordered.splice(target, 0, moved);
+  return reordered.map((item) => item.id);
+}
+
+export default function StagedList({ items, activeItemId, liveStagedItemId, onSelectActive, onChanged }: Props) {
   const liveRef = useRef<HTMLLIElement>(null);
 
   // The sidebar scrolls past 10 items, but the live card must always stay in view --
   // an operator scrolled away from it should never lose sight of what is on the stream.
   useEffect(() => {
     liveRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [liveState.stagedItemId]);
+  }, [liveStagedItemId]);
 
   return (
     <ul className="staged-list">
       {items.map((item, index) => {
-        const isLive = liveState.stagedItemId === item.id;
+        const isLive = liveStagedItemId === item.id;
         return (
           <li
             key={item.id}
             ref={isLive ? liveRef : undefined}
             className={`staged-card ${isLive ? 'staged-card--live' : ''}`}
           >
-            <button className="staged-card__main" onClick={() => onSelectActive(item)}>
-              <span className="staged-card__badge">{badgeFor(index)}</span>
+            <button
+              className="staged-card__main"
+              aria-pressed={item.id === activeItemId}
+              data-live={isLive ? 'true' : undefined}
+              onClick={() => onSelectActive(item)}
+            >
+              <span className="staged-card__badge" aria-hidden="true">{badgeFor(index)}</span>
               <span className="staged-card__body">
                 <span className="staged-card__title">{item.label}</span>
               </span>
+            </button>
+            <button
+              className="staged-card__move"
+              aria-label={`Move ${item.label} up`}
+              disabled={index === 0}
+              onClick={() => window.api.reorderStagedItems(move(items, index, -1)).then(onChanged)}
+            >
+              Up
+            </button>
+            <button
+              className="staged-card__move"
+              aria-label={`Move ${item.label} down`}
+              disabled={index === items.length - 1}
+              onClick={() => window.api.reorderStagedItems(move(items, index, 1)).then(onChanged)}
+            >
+              Down
             </button>
             {isLive ? (
               <span className="staged-card__live-tag">

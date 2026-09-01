@@ -31,6 +31,14 @@ export function getStagedItems(db: Database.Database): StagedItem[] {
 }
 
 export function addStagedItem(db: Database.Database, type: StagedItemType, refId: number, chapter: number | null): StagedItem {
+  // Content search re-stages the same verse/song on every hit within it (see D-05) —
+  // without this check the operator ends up with a growing pile of identical staged
+  // items and everything after them shifts position.
+  const existing = db
+    .prepare(`SELECT * FROM staged_items WHERE type = ? AND ref_id = ? AND chapter IS ?`)
+    .get(type, refId, chapter);
+  if (existing) return rowToStagedItem(db, existing);
+
   const maxPos = db.prepare(`SELECT COALESCE(MAX(position), -1) as maxPos FROM staged_items`).get() as { maxPos: number };
   const info = db
     .prepare(`INSERT INTO staged_items (type, ref_id, chapter, position) VALUES (?, ?, ?, ?)`)

@@ -31,6 +31,12 @@ describe('songRepository', () => {
     expect(findSongsByTitle(db, 'amaz').map((s) => s.title)).toEqual(['Amazing Grace']);
   });
 
+  it('treats % and _ in a query as literal characters', () => {
+    db.prepare(`INSERT INTO songs (id, title) VALUES (2, '50% Off Your Sins')`).run();
+    expect(findSongsByTitle(db, '50%').map((s) => s.title)).toEqual(['50% Off Your Sins']);
+    expect(findSongsByTitle(db, 'z_ng')).toEqual([]);
+  });
+
   it('lists blocks for a song in display order', () => {
     const blocks = getBlocksForSong(db, 1);
     expect(blocks.map((b) => b.label)).toEqual(['Verse 1', 'Chorus 1', 'Verse 2']);

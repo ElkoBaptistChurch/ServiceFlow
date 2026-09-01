@@ -45,6 +45,21 @@ describe('bibleRepository', () => {
     expect(findBooksByName(db, 'joh', 'KJV').map((b) => b.name)).toEqual(['John']);
   });
 
+  it('treats % and _ in a query as literal characters', () => {
+    db.prepare(
+      `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (5, 'KJV', 99, '50% Discount', 'OT', 99)`
+    ).run();
+    expect(findBooksByName(db, '50%', 'KJV').map((b) => b.name)).toEqual(['50% Discount']);
+    expect(findBooksByName(db, 'j_hn', 'KJV')).toEqual([]);
+  });
+
+  it('finds an uppercase accented book name', () => {
+    db.prepare(
+      `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (5, 'RVR', 2, 'ÉXODO', 'OT', 2)`
+    ).run();
+    expect(findBooksByName(db, 'éxodo', 'RVR').map((b) => b.name)).toEqual(['ÉXODO']);
+  });
+
   it('does not leak books from another translation', () => {
     expect(findBooksByName(db, 'acts', 'KJV')).toEqual([]);
     expect(findBooksByName(db, 'acts', 'NET').map((b) => b.name)).toEqual(['Acts']);

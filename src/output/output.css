@@ -21,6 +21,12 @@ html, body {
   box-sizing: border-box;
   opacity: 0;
   transition: opacity 0.4s ease;
+  /* Column layout with the reference pinned last: output.js caps .output-text's own
+     height to the fit budget (see O-04), so an unfittable verse clips inside the text
+     box instead of ever pushing the reference below it out of frame. */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
 .output-root.hidden {
@@ -39,6 +45,30 @@ html, body {
   color: #ffffff;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
   line-height: 1.3;
+  /* Lyrics carry real line breaks (O-01) and a single long token must wrap rather than
+     run off the edge of the frame (O-05). */
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  /* output.js caps this via an inline max-height once the budget is known; overflow
+     stays hidden here so a verse that can't fit even at the font floor clips inside the
+     text box rather than overlapping or pushing out the reference (O-04). */
+  overflow: hidden;
+  flex: 0 1 auto;
+}
+
+.output-truncated {
+  /* Hidden by default; output.js reveals this the moment fitting bottoms out and the
+     verse still overflows, so clipped text is signalled rather than silent (O-04). */
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ff8080;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  flex: 0 0 auto;
+}
+
+.output-truncated[hidden] {
+  display: none;
 }
 
 .output-reference {
@@ -47,6 +77,24 @@ html, body {
   font-weight: 400;
   color: #f0d060;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  flex: 0 0 auto;
+}
+
+.connection-indicator {
+  /* Off-screen while connected; output.js toggles this when the socket drops so a
+     frozen last frame doesn't look indistinguishable from a live one (O-08). */
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e04040;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+}
+
+.connection-indicator[hidden] {
+  display: none;
 }
 
 /* Bible presets */

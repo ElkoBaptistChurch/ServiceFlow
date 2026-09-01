@@ -29,6 +29,11 @@ beforeEach(() => {
     getVersesForChapter: vi.fn().mockResolvedValue([]),
     unstageItem: vi.fn().mockResolvedValue(undefined),
     setLiveState: vi.fn().mockResolvedValue(EMPTY_LIVE),
+    reorderStagedItems: vi.fn().mockResolvedValue(undefined),
+    getChaptersForBook: vi.fn().mockResolvedValue([]),
+    stageItem: vi.fn(),
+    searchBibleContent: vi.fn().mockResolvedValue([]),
+    searchSongContent: vi.fn().mockResolvedValue([]),
   };
 });
 
@@ -193,5 +198,101 @@ describe('App', () => {
     // Flush the deferred responses so no state update lands after the test/cleanup.
     pending.forEach((resolve) => resolve());
     await waitFor(() => {});
+  });
+
+  // R-01: staging from search must not get wiped out by the ghost-cleanup effect racing
+  // ahead of the refreshed staged-items list. Real IPC has latency; a same-microtask mock
+  // would let the effect lose every time and mask the bug.
+  it('keeps the staged item selected after staging it from search', async () => {
+    const book = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT' as const, sortOrder: 43 };
+    const item = { id: 5, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' };
+    let call = 0;
+    (window.api.getStagedItems as any) = vi.fn(() => {
+      call += 1;
+      const value = call === 1 ? [] : [item];
+      return new Promise((resolve) => setTimeout(() => resolve(value), 5));
+    });
+    (window.api.findBibleBooks as any).mockResolvedValue([book]);
+    (window.api.getChaptersForBook as any).mockResolvedValue([3]);
+    (window.api.stageItem as any).mockResolvedValue(item);
+    (window.api.getVersesForChapter as any).mockResolvedValue([
+      { id: 100, bookId: 7, chapter: 3, verse: 16, text: 'For God so loved the world.' },
+    ]);
+
+    render(<App />);
+    const input = await screen.findByPlaceholderText(/search/i);
+    fireEvent.change(input, { target: { value: 'John' } });
+    fireEvent.click(await screen.findByText('John'));
+    fireEvent.click(await screen.findByText('3'));
+
+    expect(await screen.findByText(/For God so loved the world/)).toBeInTheDocument();
+    expect(screen.queryByText(/no item selected/i)).not.toBeInTheDocument();
+  });
+
+  // R-03: autorepeat from a held key must not multiply the toggle.
+  it('ignores auto-repeated key events', async () => {
+    render(<App />);
+    await screen.findByText(/nothing live/i);
+
+    for (let i = 0; i < 5; i++) {
+      fireEvent.keyDown(window, { key: 'Escape', repeat: true });
+    }
+
+    expect(window.api.setOutputHidden).not.toHaveBeenCalled();
+  });
+
+  // R-04: Escape while a <select> has focus must stay the dropdown's own cancel, not also
+  // blank the live output. Per UX review, only SELECT gets this treatment -- BUTTON does
+  // not -- Escape must remain an unconditional panic button everywhere else.
+  it('does not fire shortcuts while a select has focus', async () => {
+    render(<App />);
+    screen.getByRole('button', { name: /settings/i }).click();
+    const select = await screen.findByLabelText(/bible translation/i);
+    select.focus();
+
+    fireEvent.keyDown(select, { key: 'Escape' });
+
+    expect(window.api.setOutputHidden).not.toHaveBeenCalled();
+  });
+
+  // R-05: a modifier held with a digit is some other shortcut (or none), never "jump to
+  // staged item N and leave Settings".
+  it('ignores number shortcuts with a modifier held', async () => {
+    (window.api.getStagedItems as any).mockResolvedValue([
+      { id: 1, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' },
+    ]);
+    render(<App />);
+    screen.getByRole('button', { name: /settings/i }).click();
+    await screen.findByText(/OBS Browser Source URLs/i);
+
+    fireEvent.keyDown(window, { key: '1', ctrlKey: true });
+
+    expect(screen.getByText(/OBS Browser Source URLs/i)).toBeInTheDocument();
+  });
+
+  // R-14: the content-search highlight is a one-shot "look here", not a permanent marker
+  // that re-fires the scroll on every unrelated refetch.
+  it('clears the content-search highlight after scrolling to it', async () => {
+    const book = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT' as const, sortOrder: 43 };
+    const item = { id: 5, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' };
+    (window.api.findBibleBooks as any).mockResolvedValue([book]);
+    (window.api.searchBibleContent as any).mockResolvedValue([
+      { verse: { id: 101, bookId: 7, chapter: 3, verse: 17, text: 'For God sent not his Son to condemn.' }, bookName: 'John', translation: 'KJV' },
+    ]);
+    (window.api.stageItem as any).mockResolvedValue(item);
+    (window.api.getVersesForChapter as any).mockResolvedValue([
+      { id: 100, bookId: 7, chapter: 3, verse: 16, text: 'For God so loved the world.' },
+      { id: 101, bookId: 7, chapter: 3, verse: 17, text: 'For God sent not his Son to condemn.' },
+    ]);
+
+    render(<App />);
+    const input = await screen.findByPlaceholderText(/search/i);
+    fireEvent.click(screen.getByRole('button', { name: /content search/i }));
+    fireEvent.change(input, { target: { value: 'condemn' } });
+    fireEvent.click(await screen.findByText(/For God sent not his Son/));
+
+    const match = await screen.findByText(/For God sent not his Son/);
+    const matchedButton = match.closest('button');
+    await waitFor(() => expect(matchedButton).not.toHaveAttribute('data-matched'));
   });
 });

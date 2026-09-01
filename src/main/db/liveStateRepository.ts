@@ -43,6 +43,19 @@ function rowToLiveState(db: Database.Database, row: any): LiveState {
 
 export function getLiveState(db: Database.Database): LiveState {
   const row = db.prepare(`SELECT * FROM live_state WHERE id = 1`).get();
+  // The singleton row can't reach 2 rows (CHECK (id = 1) plus INSERT OR IGNORE seeding),
+  // but 0 rows is reachable via a migration that recreates the table — fail soft rather
+  // than throwing a raw TypeError on row.staged_item_id.
+  if (!row) {
+    return {
+      stagedItemId: null,
+      verseOrBlockId: null,
+      styleId: null,
+      hidden: false,
+      updatedAt: new Date(0).toISOString(),
+      reference: null,
+    };
+  }
   return rowToLiveState(db, row);
 }
 

@@ -63,9 +63,21 @@ export interface ServerHandle {
   start(port: number): Promise<number>;
   stop(): Promise<void>;
   broadcastLiveUpdate(): void;
+  getClientCount(): number;
 }
 
-export function createServer(db: Database.Database): ServerHandle {
+export interface CreateServerOptions {
+  /** Overridable only so tests don't have to wait out a real 30s heartbeat cycle. */
+  heartbeatIntervalMs?: number;
+}
+
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
+
+interface HeartbeatSocket extends WebSocket {
+  isAlive?: boolean;
+}
+
+export function createServer(db: Database.Database, options: CreateServerOptions = {}): ServerHandle {
   const app = express();
   app.use('/output', express.static(path.join(__dirname, '..', '..', 'output')));
   app.get('/api/state', (_req, res) => {
@@ -80,12 +92,43 @@ export function createServer(db: Database.Database): ServerHandle {
   // EventEmitter behaviour for an unhandled 'error' event throws synchronously -- and it does
   // so from *inside* the httpServer 'error' emit, ahead of start()'s own reject() listener,
   // killing the whole Electron main process before the OS-assigned-port fallback ever runs.
-  // This no-op listener makes a bind failure a normal rejected promise instead of a crash.
-  wss.on('error', () => {});
+  // During a start() attempt this swallows that expected EADDRINUSE; once startup succeeds
+  // the swallow window closes so a later error (EMFILE, adapter teardown) is at least logged
+  // instead of vanishing forever (M-11).
+  let inStartupWindow = true;
+  wss.on('error', (err: Error) => {
+    if (inStartupWindow) return;
+    console.error('WebSocketServer error', err);
+  });
 
   wss.on('connection', (socket: WebSocket) => {
+    const heartbeatSocket = socket as HeartbeatSocket;
+    heartbeatSocket.isAlive = true;
+    heartbeatSocket.on('pong', () => {
+      heartbeatSocket.isAlive = true;
+    });
+    // A malformed frame from any device on the LAN (the server binds 0.0.0.0 with no auth)
+    // makes `ws`'s receiver emit 'error' on this socket. With no listener here, Node's
+    // default EventEmitter behaviour throws synchronously and kills the whole process.
+    socket.on('error', () => socket.terminate());
     socket.send(JSON.stringify({ type: 'live_update', payload: buildOutputPayload(db) }));
   });
+
+  // Half-open connections (the peer vanished without a clean TCP close, common on flaky
+  // venue Wi-Fi) never fire 'close' and sit in wss.clients forever, silently absorbing every
+  // broadcast until the OS's own TCP retransmit timeout (10-20 min on Windows) reaps them.
+  // Ping every client on each tick and terminate whichever didn't pong since the last one.
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((client) => {
+      const heartbeatSocket = client as HeartbeatSocket;
+      if (heartbeatSocket.isAlive === false) {
+        heartbeatSocket.terminate();
+        return;
+      }
+      heartbeatSocket.isAlive = false;
+      heartbeatSocket.ping();
+    });
+  }, options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS);
 
   function broadcastLiveUpdate(): void {
     const message = JSON.stringify({ type: 'live_update', payload: buildOutputPayload(db) });
@@ -94,9 +137,10 @@ export function createServer(db: Database.Database): ServerHandle {
     });
   }
 
-  return {
+  const handle = {
     start(port: number) {
-      return new Promise((resolve, reject) => {
+      inStartupWindow = true;
+      return new Promise<number>((resolve, reject) => {
         const onError = (err: Error) => {
           httpServer.removeListener('error', onError);
           reject(err);
@@ -104,16 +148,29 @@ export function createServer(db: Database.Database): ServerHandle {
         httpServer.once('error', onError);
         httpServer.listen(port, '0.0.0.0', () => {
           httpServer.removeListener('error', onError);
+          inStartupWindow = false;
           const address = httpServer.address();
           resolve(typeof address === 'object' && address ? address.port : port);
         });
       });
     },
     stop() {
-      return new Promise((resolve) => {
+      return new Promise<void>((resolve) => {
+        clearInterval(heartbeatInterval);
+        // wss.close() only waits for wss.clients to drain, and httpServer.close() only waits
+        // for upgraded connections to end -- neither callback ever fires while a client is
+        // still connected. Terminate every client first so quitting can't hang forever (M-06).
+        for (const client of wss.clients) client.terminate();
         wss.close(() => httpServer.close(() => resolve()));
       });
     },
     broadcastLiveUpdate,
+    getClientCount() {
+      return wss.clients.size;
+    },
+    // Not part of the ServerHandle interface -- exposed only so the M-11 regression test can
+    // emit a post-startup 'error' on the real httpServer without a live EMFILE to provoke one.
+    httpServer,
   };
+  return handle;
 }

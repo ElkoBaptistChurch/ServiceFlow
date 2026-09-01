@@ -6,13 +6,22 @@ interface Props {
   liveState: LiveState;
   /** Verse/block a content search matched: scroll to and highlight it, do NOT go live. */
   focusEntryId: number | null;
+  /** Called once the pane has scrolled to `focusEntryId`, so App can clear the one-shot value. */
+  onFocusHandled: () => void;
   onLive: () => void;
   /** Shown next to the reference for bible items, e.g. "King James Version". Optional so
    * standalone renders (tests) don't need to supply it. */
   translation?: string;
 }
 
-export default function ContentPane({ activeItem, liveState, focusEntryId, onLive, translation }: Props) {
+export default function ContentPane({
+  activeItem,
+  liveState,
+  focusEntryId,
+  onFocusHandled,
+  onLive,
+  translation,
+}: Props) {
   const [verses, setVerses] = useState<BibleVerse[]>([]);
   const [blocks, setBlocks] = useState<SongBlock[]>([]);
   const paneRef = useRef<HTMLUListElement>(null);
@@ -24,11 +33,12 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onLiv
   useEffect(() => {
     const requestId = ++fetchSeq.current;
     const isStale = () => requestId !== fetchSeq.current;
-    if (!activeItem) {
-      setVerses([]);
-      setBlocks([]);
-      return;
-    }
+    // Clear immediately, before the fetch resolves: otherwise the previous item's entries
+    // stay rendered — and clickable, carrying the OLD staged-item id — for the whole
+    // round-trip while activeItem.id already points at the new one (R-13).
+    setVerses([]);
+    setBlocks([]);
+    if (!activeItem) return;
     // refId is a bible_books.id, so the translation is already baked in.
     if (activeItem.type === 'bible' && activeItem.chapter != null) {
       window.api.getVersesForChapter(activeItem.refId, activeItem.chapter).then((result) => {
@@ -43,14 +53,19 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onLiv
         setVerses([]);
       });
     }
+    // An unhandled shape (e.g. a bible item with no chapter) must fail to empty, never to
+    // stale-but-clickable content from the previous item.
   }, [activeItem]);
 
   useEffect(() => {
     if (focusEntryId == null) return;
-    paneRef.current
-      ?.querySelector(`[data-entry-id="${focusEntryId}"]`)
-      ?.scrollIntoView({ block: 'center' });
-  }, [focusEntryId, verses, blocks]);
+    const target = paneRef.current?.querySelector(`[data-entry-id="${focusEntryId}"]`);
+    if (!target) return; // content hasn't fetched yet; a later run of this effect will retry
+    target.scrollIntoView({ block: 'center' });
+    // One-shot: clear it once handled, so it doesn't re-trigger the scroll on every later
+    // refetch, and so staging the SAME verse again is a fresh value that still fires (R-14).
+    onFocusHandled();
+  }, [focusEntryId, verses, blocks, onFocusHandled]);
 
   function goLive(id: number) {
     if (!activeItem) return;
@@ -63,8 +78,21 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onLiv
    * arrow key typed in the search box change what is on the stream.
    */
   function onKeyDown(e: React.KeyboardEvent) {
-    if (!activeItem || liveState.stagedItemId !== activeItem.id || liveState.verseOrBlockId == null) return;
+    if (!activeItem) return;
     const list = activeItem.type === 'bible' ? verses : blocks;
+    if (list.length === 0) return;
+
+    const nothingLiveHere = liveState.stagedItemId !== activeItem.id || liveState.verseOrBlockId == null;
+    if (nothingLiveHere) {
+      // Cold start: either arrow key goes live with the first entry, so the keyboard-only
+      // path the spec promises works without first reaching for the mouse (R-06).
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        goLive(list[0].id);
+      }
+      return;
+    }
+
     const index = list.findIndex((entry) => entry.id === liveState.verseOrBlockId);
     if (index === -1) return;
     if (e.key === 'ArrowDown' && index < list.length - 1) {
@@ -103,6 +131,14 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onLiv
         <div className="header-spacer" />
         <span className="content-pane__hint">Click a verse to put it on the stream</span>
       </div>
+      {/* LiveBanner already says this globally; the operator looking at THIS list, not the
+          banner, needs the same fact right where they're clicking (R-12). Blanking stays
+          sticky by design — this is feedback only, never an auto-unhide. */}
+      {liveState.hidden && (
+        <p role="status" className="content-pane__blanked-notice">
+          Output is hidden — the selection below will not appear until it's shown again.
+        </p>
+      )}
       <ul ref={paneRef} className="content-pane__body" role="list" aria-label="Content" tabIndex={0} onKeyDown={onKeyDown}>
         {entries.map((entry, index) => {
           const live = isLiveId(entry.id);
@@ -122,7 +158,11 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onLiv
                 className="entry-row__btn"
                 data-entry-id={entry.id}
                 data-matched={isFocused ? 'true' : undefined}
+                data-blanked={live && liveState.hidden ? 'true' : undefined}
                 aria-pressed={live}
+                // Same collapsed-line-break defect as O-01's output page: without this the
+                // operator's preview doesn't match what the congregation actually sees.
+                style={{ whiteSpace: 'pre-line' }}
                 onClick={(e) => {
                   // Keep focus in the pane so the arrow keys work immediately afterwards.
                   e.currentTarget.closest('ul')?.focus();

@@ -6,13 +6,64 @@ import path from 'path';
 import { applySchema } from '../../../src/main/db/schema';
 import { importOpenlpBible } from '../../../src/main/import/openlpBibleImporter';
 import { createFixtureBibleDb } from '../../helpers/openlpFixtures';
-import { getVersesForChapter, findBooksByName, searchBibleContent } from '../../../src/main/db/bibleRepository';
+import {
+  getVersesForChapter,
+  findBooksByName,
+  searchBibleContent,
+  listTranslations,
+} from '../../../src/main/db/bibleRepository';
 
 // The shared createFixtureBibleDb mirrors the real file's schema exactly, where
 // `book.id INTEGER PRIMARY KEY` is a rowid alias: binding NULL there makes SQLite
 // autoassign a real id rather than storing NULL. To exercise the defensive "book
 // row has a NULL id" branch we need a source table where `id` is an ordinary
 // column, so this local builder skips the PRIMARY KEY constraint on purpose.
+// D-06: a fixture whose verse table is missing the text column, so reading verses
+// throws structurally (not a per-row error) after books have already been read.
+function createFixtureBibleDbMissingVerseTextColumn(
+  translationName: string,
+  books: { id: number; name: string | null; testamentReferenceId: number; bookReferenceId?: number }[]
+): string {
+  const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-bible-brokenverse-')), 'bible.sqlite');
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE metadata (key VARCHAR(255) NOT NULL PRIMARY KEY, value VARCHAR(255));
+    CREATE TABLE book (id INTEGER NOT NULL PRIMARY KEY, book_reference_id INTEGER, testament_reference_id INTEGER, name VARCHAR(50));
+    CREATE TABLE verse (id INTEGER NOT NULL PRIMARY KEY, book_id INTEGER, chapter INTEGER, verse INTEGER);
+  `);
+  db.prepare(`INSERT INTO metadata (key, value) VALUES ('name', ?)`).run(translationName);
+  const insertBook = db.prepare(
+    `INSERT INTO book (id, book_reference_id, testament_reference_id, name) VALUES (?, ?, ?, ?)`
+  );
+  books.forEach((b) => insertBook.run(b.id, b.bookReferenceId ?? b.id, b.testamentReferenceId, b.name));
+  db.close();
+  return dbPath;
+}
+
+// I-09b/D-01: a fixture with no metadata name row at all, forcing the path.basename
+// fallback.
+function createFixtureBibleDbNoMetadataName(
+  books: { id: number; name: string | null; testamentReferenceId: number; bookReferenceId?: number }[],
+  verses: { bookId: number; chapter: number | string; verse: number | string; text: string }[],
+  fileName = 'bible.sqlite'
+): string {
+  const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-bible-nometa-')), fileName);
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE metadata (key VARCHAR(255) NOT NULL PRIMARY KEY, value VARCHAR(255));
+    CREATE TABLE book (id INTEGER NOT NULL PRIMARY KEY, book_reference_id INTEGER, testament_reference_id INTEGER, name VARCHAR(50));
+    CREATE TABLE verse (id INTEGER NOT NULL PRIMARY KEY, book_id INTEGER, chapter INTEGER, verse INTEGER, text TEXT);
+  `);
+  const insertBook = db.prepare(
+    `INSERT INTO book (id, book_reference_id, testament_reference_id, name) VALUES (?, ?, ?, ?)`
+  );
+  books.forEach((b) => insertBook.run(b.id, b.bookReferenceId ?? b.id, b.testamentReferenceId, b.name));
+  const insertVerse = db.prepare(`INSERT INTO verse (book_id, chapter, verse, text) VALUES (?, ?, ?, ?)`);
+  verses.forEach((v) => insertVerse.run(v.bookId, v.chapter, v.verse, v.text));
+  db.close();
+  return dbPath;
+}
+
 function createFixtureBibleDbWithRawBookRows(
   translationName: string,
   bookRows: { id: number | null; name: string | null; bookReferenceId: number | null; testamentReferenceId: number | null }[],
@@ -209,6 +260,17 @@ describe('importOpenlpBible — malformed row resilience', () => {
     expect(orphanedVerseError!.reason).toMatch(/unknown source book id 2/);
   });
 
+  // D-06: a structural failure partway through a file (verses could not even be read)
+  // must not leave books committed on their own — the file must be all-or-nothing.
+  it('leaves no books behind when verse import fails', () => {
+    const fixturePath = createFixtureBibleDbMissingVerseTextColumn('KJV', [
+      { id: 1, name: 'Genesis', testamentReferenceId: 1 },
+    ]);
+
+    expect(() => importOpenlpBible(mainDb, fixturePath)).toThrow();
+    expect(findBooksByName(mainDb, 'Genesis', 'KJV')).toHaveLength(0);
+  });
+
   it('skips a book row with a NULL id and still imports the valid books and verses around it', () => {
     const fixturePath = createFixtureBibleDbWithRawBookRows(
       'KJV',
@@ -272,5 +334,63 @@ describe('importOpenlpBible — malformed row resilience', () => {
     expect(summary.errors[0].reason).toMatch(/chapter or verse/i);
     const genesis = findBooksByName(mainDb, 'Genesis', 'KJV')[0];
     expect(getVersesForChapter(mainDb, genesis.id, 1)).toHaveLength(1);
+  });
+});
+
+// D-01: ON CONFLICT(translation, source_book_id) DO UPDATE SET name=... used to rename
+// a book row in place while leaving its old verses attached — mixing one edition's
+// scripture under another edition's book name.
+describe('importOpenlpBible — re-importing a different edition under the same translation', () => {
+  it('does not merge two different editions that share a translation name', () => {
+    const editionA = createFixtureBibleDb(
+      'KJV',
+      [{ id: 44, name: 'Romans', testamentReferenceId: 2 }],
+      [
+        { bookId: 44, chapter: 1, verse: 2, text: 'Which he had promised afore.' },
+        { bookId: 44, chapter: 16, verse: 25, text: 'Now to him that is of power.' },
+      ]
+    );
+    importOpenlpBible(mainDb, editionA);
+
+    // A with-Apocrypha (or otherwise re-numbered) build where source book 44 is now
+    // Acts, and this edition never supplies chapter 16 at all.
+    const editionB = createFixtureBibleDb(
+      'KJV',
+      [{ id: 44, name: 'Acts', testamentReferenceId: 2 }],
+      [{ bookId: 44, chapter: 1, verse: 1, text: 'The former treatise have I made, O Theophilus.' }]
+    );
+    importOpenlpBible(mainDb, editionB);
+
+    const acts = findBooksByName(mainDb, 'Acts', 'KJV')[0];
+    expect(acts.sourceBookId).toBe(44);
+    expect(getVersesForChapter(mainDb, acts.id, 1).map((v) => v.text)).toEqual([
+      'The former treatise have I made, O Theophilus.',
+    ]);
+    // Romans 16:25 must not survive relabeled as "Acts 16:25".
+    expect(getVersesForChapter(mainDb, acts.id, 16)).toHaveLength(0);
+  });
+
+  // I-09b: two unrelated files with no declared name both fall back to the same
+  // path.basename ("bible.sqlite") and must not collapse into one translation bucket.
+  it('keeps two same-basename files as separate translations', () => {
+    const kjvPath = createFixtureBibleDbNoMetadataName(
+      [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }],
+      [{ bookId: 1, chapter: 1, verse: 1, text: 'In the beginning...' }]
+    );
+    const netPath = createFixtureBibleDbNoMetadataName(
+      [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }],
+      [{ bookId: 1, chapter: 1, verse: 1, text: 'In the beginning, God created...' }]
+    );
+
+    const summaryA = importOpenlpBible(mainDb, kjvPath);
+    const summaryB = importOpenlpBible(mainDb, netPath);
+
+    expect(summaryA.translation).toBe('bible');
+    expect(summaryB.translation).not.toBe('bible');
+    expect(listTranslations(mainDb)).toHaveLength(2);
+    const genesisA = findBooksByName(mainDb, 'Genesis', summaryA.translation!)[0];
+    const genesisB = findBooksByName(mainDb, 'Genesis', summaryB.translation!)[0];
+    expect(getVersesForChapter(mainDb, genesisA.id, 1)[0].text).toBe('In the beginning...');
+    expect(getVersesForChapter(mainDb, genesisB.id, 1)[0].text).toBe('In the beginning, God created...');
   });
 });

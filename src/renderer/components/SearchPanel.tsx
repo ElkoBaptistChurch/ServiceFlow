@@ -41,6 +41,10 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
   // Which result the keyboard (arrow keys / Enter) currently targets in whichever list is
   // showing. Reset to the top whenever the visible list changes underneath it.
   const [highlighted, setHighlighted] = useState(0);
+  // True while a search is in flight, so the "No matches" line can be shown only once a
+  // search has actually finished with nothing -- otherwise it flashes during every
+  // debounce + IPC round trip before the real results replace it.
+  const [searching, setSearching] = useState(false);
   // Monotonic sequence number so a slow, older query can never overwrite a newer one's
   // results if it resolves later: each search captures the id current at fire time and
   // only commits state if it is still the latest one issued by the time it resolves.
@@ -56,11 +60,13 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
     setSelectedBook(null);
     setChapters([]);
     setContentResults([]);
+    setBooks([]);
+    setSongs([]);
     if (query.trim() === '') {
-      setBooks([]);
-      setSongs([]);
+      setSearching(false);
       return;
     }
+    setSearching(true);
     const handle = setTimeout(() => {
       const requestId = ++searchSeq.current;
       const isStale = () => requestId !== searchSeq.current;
@@ -68,11 +74,13 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
         window.api.findBibleBooks(query, translation).then((results) => {
           if (isStale()) return;
           setBooks(results);
+          setSearching(false);
         });
       } else if (subMode === 'browse' && mode === 'song') {
         window.api.findSongsByTitle(query).then((results) => {
           if (isStale()) return;
           setSongs(results);
+          setSearching(false);
         });
       } else if (subMode === 'content' && mode === 'bible') {
         window.api.searchBibleContent(query, translation).then((results) => {
@@ -89,6 +97,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
                   .then((item) => onStaged(item, r.verse.id)),
             }))
           );
+          setSearching(false);
         });
       } else {
         window.api.searchSongContent(query).then((results) => {
@@ -100,15 +109,24 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
               onSelect: () => window.api.stageItem('song', r.block.songId, null).then((item) => onStaged(item, r.block.id)),
             }))
           );
+          setSearching(false);
         });
       }
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
   }, [query, mode, subMode, translation]);
 
+  // Same monotonic-sequence idiom as the search effect above, applied to the one other
+  // async path in this file: a slow chapter fetch for a book the operator has already
+  // clicked past must not overwrite the chapters of the book now selected.
+  const bookSeq = useRef(0);
+
   async function selectBook(book: BibleBook) {
     setSelectedBook(book);
-    setChapters(await window.api.getChaptersForBook(book.id));
+    const requestId = ++bookSeq.current;
+    const chaptersForBook = await window.api.getChaptersForBook(book.id);
+    if (requestId !== bookSeq.current) return;
+    setChapters(chaptersForBook);
   }
 
   // A single flat list of whatever is currently on screen, so Enter/arrow keys can
@@ -242,7 +260,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
               <div className="search-popover__section">
                 <span className="search-popover__section-label">Books</span>
               </div>
-              {books.length === 0 && <div className="search-popover__empty">No matches</div>}
+              {books.length === 0 && !searching && <div className="search-popover__empty">No matches</div>}
               <ul className="search-popover__list">
                 {books.map((b, i) => (
                   <li key={b.id}>
@@ -262,6 +280,16 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
             <>
               <div className="search-popover__section">
                 <span className="search-popover__section-label">Books</span>
+                <button
+                  type="button"
+                  className="search-popover__back"
+                  onClick={() => {
+                    setSelectedBook(null);
+                    setChapters([]);
+                  }}
+                >
+                  &larr; Back to books
+                </button>
               </div>
               <div className="search-popover__book">
                 <span className="search-popover__book-title">{selectedBook.name}</span>
@@ -291,7 +319,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
               <div className="search-popover__section">
                 <span className="search-popover__section-label">Songs</span>
               </div>
-              {songs.length === 0 && <div className="search-popover__empty">No matches</div>}
+              {songs.length === 0 && !searching && <div className="search-popover__empty">No matches</div>}
               <ul className="search-popover__list">
                 {songs.map((s, i) => (
                   <li key={s.id}>
@@ -312,7 +340,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
               <div className="search-popover__section">
                 <span className="search-popover__section-label">In the words</span>
               </div>
-              {contentResults.length === 0 && <div className="search-popover__empty">No matches</div>}
+              {contentResults.length === 0 && !searching && <div className="search-popover__empty">No matches</div>}
               <ul className="search-popover__list">
                 {contentResults.map((r, i) => (
                   <li key={i}>

@@ -2,6 +2,12 @@ import Database from 'better-sqlite3';
 import { Song, SongBlock, SongSearchResult } from '../../shared/types';
 import { toFtsQuery } from './fts';
 
+// Escapes SQL LIKE metacharacters so a literal '%' or '_' typed into the browse box
+// matches itself instead of acting as a wildcard (see D-10).
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
 function rowToSong(row: any): Song {
   return { id: row.id, title: row.title, ccliNumber: row.ccli_number };
 }
@@ -11,7 +17,9 @@ function rowToBlock(row: any): SongBlock {
 }
 
 export function findSongsByTitle(db: Database.Database, query: string): Song[] {
-  const rows = db.prepare(`SELECT * FROM songs WHERE title LIKE ? ORDER BY title LIMIT 20`).all(`%${query}%`);
+  const rows = db
+    .prepare(`SELECT * FROM songs WHERE title LIKE ? ESCAPE '\\' ORDER BY title LIMIT 20`)
+    .all(`%${escapeLikePattern(query)}%`);
   return rows.map(rowToSong);
 }
 

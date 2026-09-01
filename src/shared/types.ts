@@ -97,7 +97,7 @@ export interface ImportError {
 export interface ImportSourceSummary {
   /** Basename of the file the operator picked. */
   file: string;
-  kind: 'songs' | 'bible';
+  kind: 'songs' | 'bible' | 'unknown';
   /** Translation code, for bible sources only. */
   translation?: string;
   imported: number;
