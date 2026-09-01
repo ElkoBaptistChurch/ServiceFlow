@@ -6,6 +6,12 @@ type SubMode = 'browse' | 'content';
 // Live-as-you-type against 36k+ verses: wait for a pause before hitting FTS.
 const SEARCH_DEBOUNCE_MS = 150;
 
+interface ContentResult {
+  ref: string;
+  snippet: string;
+  onSelect: () => void;
+}
+
 interface Props {
   /** The active translation, owned by App. Never hardcode one here. */
   translation: string;
@@ -15,9 +21,15 @@ interface Props {
    * they staged a whole chapter or song.
    */
   onStaged: (item: StagedItem, focusEntryId: number | null) => void;
+  /**
+   * Results render as a popover over the staged list rather than a stacked panel, so App
+   * needs to know when it is open to dim the list behind it. Optional so a standalone
+   * render (tests) doesn't need to supply it.
+   */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export default function SearchPanel({ translation, onStaged }: Props) {
+export default function SearchPanel({ translation, onStaged, onOpenChange }: Props) {
   const [mode, setMode] = useState<Mode>('bible');
   const [subMode, setSubMode] = useState<SubMode>('browse');
   const [query, setQuery] = useState('');
@@ -25,11 +37,20 @@ export default function SearchPanel({ translation, onStaged }: Props) {
   const [songs, setSongs] = useState<{ id: number; title: string }[]>([]);
   const [selectedBook, setSelectedBook] = useState<BibleBook | null>(null);
   const [chapters, setChapters] = useState<number[]>([]);
-  const [contentResults, setContentResults] = useState<{ label: string; onSelect: () => void }[]>([]);
+  const [contentResults, setContentResults] = useState<ContentResult[]>([]);
+  // Which result the keyboard (arrow keys / Enter) currently targets in whichever list is
+  // showing. Reset to the top whenever the visible list changes underneath it.
+  const [highlighted, setHighlighted] = useState(0);
   // Monotonic sequence number so a slow, older query can never overwrite a newer one's
   // results if it resolves later: each search captures the id current at fire time and
   // only commits state if it is still the latest one issued by the time it resolves.
   const searchSeq = useRef(0);
+
+  const isOpen = query.trim() !== '';
+
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
 
   useEffect(() => {
     setSelectedBook(null);
@@ -58,7 +79,8 @@ export default function SearchPanel({ translation, onStaged }: Props) {
           if (isStale()) return;
           setContentResults(
             results.map((r) => ({
-              label: `${r.bookName} ${r.verse.chapter}:${r.verse.verse} — ${r.verse.text}`,
+              ref: `${r.bookName} ${r.verse.chapter}:${r.verse.verse}`,
+              snippet: r.verse.text,
               // Stage the chapter, then hand back the matched verse so the content pane
               // can scroll to and highlight it (staging alone is not "jump to the verse").
               onSelect: () =>
@@ -73,9 +95,9 @@ export default function SearchPanel({ translation, onStaged }: Props) {
           if (isStale()) return;
           setContentResults(
             results.map((r) => ({
-              label: `${r.songTitle} (${r.block.label}) — ${r.block.text}`,
-              onSelect: () =>
-                window.api.stageItem('song', r.block.songId, null).then((item) => onStaged(item, r.block.id)),
+              ref: `${r.songTitle} (${r.block.label})`,
+              snippet: r.block.text,
+              onSelect: () => window.api.stageItem('song', r.block.songId, null).then((item) => onStaged(item, r.block.id)),
             }))
           );
         });
@@ -89,72 +111,233 @@ export default function SearchPanel({ translation, onStaged }: Props) {
     setChapters(await window.api.getChaptersForBook(book.id));
   }
 
+  // A single flat list of whatever is currently on screen, so Enter/arrow keys can
+  // operate the same way regardless of which of the four views (books, chapters, songs,
+  // content matches) is showing.
+  const activeResults: { key: string | number; onSelect: () => void }[] =
+    subMode === 'content'
+      ? contentResults.map((r, i) => ({ key: i, onSelect: r.onSelect }))
+      : mode === 'bible' && selectedBook
+        ? chapters.map((c) => ({
+            key: c,
+            onSelect: () => window.api.stageItem('bible', selectedBook.id, c).then((item) => onStaged(item, null)),
+          }))
+        : mode === 'bible'
+          ? books.map((b) => ({ key: b.id, onSelect: () => selectBook(b) }))
+          : songs.map((s) => ({
+              key: s.id,
+              onSelect: () => window.api.stageItem('song', s.id, null).then((item) => onStaged(item, null)),
+            }));
+
+  useEffect(() => {
+    setHighlighted(0);
+  }, [books, songs, chapters, contentResults, selectedBook]);
+
+  const safeHighlighted = Math.min(highlighted, Math.max(activeResults.length - 1, 0));
+
+  function onInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape' && isOpen) {
+      // Closes the popover without displacing or altering the staged list underneath it.
+      e.preventDefault();
+      setQuery('');
+      return;
+    }
+    if (!isOpen || activeResults.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlighted((i) => Math.min(i + 1, activeResults.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlighted((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      activeResults[safeHighlighted]?.onSelect();
+    }
+  }
+
+  const matchWord = activeResults.length === 1 ? 'match' : 'matches';
+
   return (
-    <div>
-      <div>
-        <button onClick={() => { setMode('bible'); setQuery(''); }} aria-pressed={mode === 'bible'}>
+    <div className="search-anchor">
+      <div className="search-box">
+        <svg
+          className="search-box__icon"
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3.5-3.5" />
+        </svg>
+        <input
+          id="search-input"
+          className="search-box__input"
+          placeholder={mode === 'bible' ? 'Search book name or content...' : 'Search song title or lyrics...'}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onInputKeyDown}
+        />
+        {isOpen ? (
+          <span className="search-box__count">
+            {activeResults.length} {matchWord}
+          </span>
+        ) : (
+          <span className="search-box__hint">/</span>
+        )}
+      </div>
+
+      <div className="mode-tabs">
+        <button
+          className={`pill ${mode === 'bible' ? 'pill--active' : ''}`}
+          onClick={() => {
+            setMode('bible');
+            setQuery('');
+          }}
+          aria-pressed={mode === 'bible'}
+        >
           Bible
         </button>
-        <button onClick={() => { setMode('song'); setQuery(''); }} aria-pressed={mode === 'song'}>
+        <button
+          className={`pill ${mode === 'song' ? 'pill--active' : ''}`}
+          onClick={() => {
+            setMode('song');
+            setQuery('');
+          }}
+          aria-pressed={mode === 'song'}
+        >
           Songs
         </button>
       </div>
-      <div>
-        <button onClick={() => { setSubMode('browse'); setQuery(''); }} aria-pressed={subMode === 'browse'}>
+      <div className="submode-tabs">
+        <button
+          className={`pill pill--ghost ${subMode === 'browse' ? 'pill--active' : ''}`}
+          onClick={() => {
+            setSubMode('browse');
+            setQuery('');
+          }}
+          aria-pressed={subMode === 'browse'}
+        >
           Browse
         </button>
-        <button onClick={() => { setSubMode('content'); setQuery(''); }} aria-pressed={subMode === 'content'}>
+        <button
+          className={`pill pill--ghost ${subMode === 'content' ? 'pill--active' : ''}`}
+          onClick={() => {
+            setSubMode('content');
+            setQuery('');
+          }}
+          aria-pressed={subMode === 'content'}
+        >
           Content search
         </button>
       </div>
-      <input
-        id="search-input"
-        placeholder={mode === 'bible' ? 'Search book name or content...' : 'Search song title or lyrics...'}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      {subMode === 'browse' && mode === 'bible' && !selectedBook && (
-        <ul>
-          {books.length === 0 && query.trim() !== '' && <li>No matches</li>}
-          {books.map((b) => (
-            <li key={b.id}>
-              <button onClick={() => selectBook(b)}>{b.name}</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {subMode === 'browse' && mode === 'bible' && selectedBook && (
-        <ul>
-          {chapters.map((c) => (
-            <li key={c}>
-              <button onClick={() => window.api.stageItem('bible', selectedBook.id, c).then((item) => onStaged(item, null))}>
-                {c}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {subMode === 'browse' && mode === 'song' && (
-        <ul>
-          {songs.length === 0 && query.trim() !== '' && <li>No matches</li>}
-          {songs.map((s) => (
-            <li key={s.id}>
-              <button onClick={() => window.api.stageItem('song', s.id, null).then((item) => onStaged(item, null))}>
-                {s.title}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {subMode === 'content' && (
-        <ul>
-          {contentResults.length === 0 && query.trim() !== '' && <li>No matches</li>}
-          {contentResults.map((r, i) => (
-            <li key={i}>
-              <button onClick={r.onSelect}>{r.label}</button>
-            </li>
-          ))}
-        </ul>
+
+      {isOpen && (
+        <div className="search-popover" role="listbox" aria-label="Search results">
+          {subMode === 'browse' && mode === 'bible' && !selectedBook && (
+            <>
+              <div className="search-popover__section">
+                <span className="search-popover__section-label">Books</span>
+              </div>
+              {books.length === 0 && <div className="search-popover__empty">No matches</div>}
+              <ul className="search-popover__list">
+                {books.map((b, i) => (
+                  <li key={b.id}>
+                    <button
+                      className={`search-popover__row-btn ${i === safeHighlighted ? 'search-popover__row-btn--active' : ''}`}
+                      onClick={() => selectBook(b)}
+                    >
+                      <span className="search-popover__row-title">{b.name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {subMode === 'browse' && mode === 'bible' && selectedBook && (
+            <>
+              <div className="search-popover__section">
+                <span className="search-popover__section-label">Books</span>
+              </div>
+              <div className="search-popover__book">
+                <span className="search-popover__book-title">{selectedBook.name}</span>
+                <span className="search-popover__book-count">
+                  {chapters.length} chapter{chapters.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div className="chapter-grid">
+                {chapters.map((c, i) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`chapter-cell ${i === safeHighlighted ? 'chapter-cell--active' : ''}`}
+                    onClick={() =>
+                      window.api.stageItem('bible', selectedBook.id, c).then((item) => onStaged(item, null))
+                    }
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {subMode === 'browse' && mode === 'song' && (
+            <>
+              <div className="search-popover__section">
+                <span className="search-popover__section-label">Songs</span>
+              </div>
+              {songs.length === 0 && <div className="search-popover__empty">No matches</div>}
+              <ul className="search-popover__list">
+                {songs.map((s, i) => (
+                  <li key={s.id}>
+                    <button
+                      className={`search-popover__row-btn ${i === safeHighlighted ? 'search-popover__row-btn--active' : ''}`}
+                      onClick={() => window.api.stageItem('song', s.id, null).then((item) => onStaged(item, null))}
+                    >
+                      <span className="search-popover__row-title">{s.title}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {subMode === 'content' && (
+            <>
+              <div className="search-popover__section">
+                <span className="search-popover__section-label">In the words</span>
+              </div>
+              {contentResults.length === 0 && <div className="search-popover__empty">No matches</div>}
+              <ul className="search-popover__list">
+                {contentResults.map((r, i) => (
+                  <li key={i}>
+                    <button
+                      className={`search-result-row ${i === safeHighlighted ? 'search-result-row--active' : ''}`}
+                      onClick={r.onSelect}
+                    >
+                      <span className="search-result-row__ref">{r.ref}</span>
+                      <span className="search-result-row__snippet">{r.snippet}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <div className="search-popover__footer">
+            <span>
+              <strong>Enter</strong> adds it to today
+            </span>
+            <span>
+              <strong>Esc</strong> closes
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );

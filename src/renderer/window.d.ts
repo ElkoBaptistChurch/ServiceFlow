@@ -1,9 +1,13 @@
-import type { BibleBook, BibleSearchResult, ContentType, LiveState, OutputStyle, Song, SongBlock, SongSearchResult, StagedItem, StagedItemType, ImportSummary, BibleVerse } from '../shared/types';
+import type { BibleBook, BibleSearchResult, ContentType, LiveState, OutputStyle, Song, SongBlock, SongSearchResult, StagedItem, StagedItemType, ImportSummary, BibleVerse, Theme } from '../shared/types';
 
 export interface ServiceFlowApi {
   listTranslations(): Promise<string[]>;
   getActiveTranslation(): Promise<string | null>;
   setActiveTranslation(translation: string): Promise<void>;
+  /** Read before this window was created, so the document can be themed pre-paint. */
+  initialTheme: Theme;
+  getTheme(): Promise<Theme>;
+  setTheme(theme: Theme): Promise<void>;
   findBibleBooks(query: string, translation: string): Promise<BibleBook[]>;
   /** bookId is always BibleBook.id — never an OpenLP source book id. */
   getChaptersForBook(bookId: number): Promise<number[]>;

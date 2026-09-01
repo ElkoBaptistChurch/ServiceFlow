@@ -1,12 +1,22 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IpcChannels } from '../shared/ipcChannels';
-import type { ContentType, LiveState, StagedItemType } from '../shared/types';
+import type { ContentType, LiveState, StagedItemType, Theme } from '../shared/types';
+
+// The theme the main process read out of the database before this window was created.
+// Synchronous on purpose: an IPC round-trip resolves after the first paint, which is
+// exactly the light flash this is here to prevent.
+const THEME_ARG = '--serviceflow-theme=';
+const initialTheme: Theme =
+  process.argv.find((a) => a.startsWith(THEME_ARG))?.slice(THEME_ARG.length) === 'dark' ? 'dark' : 'light';
 
 contextBridge.exposeInMainWorld('api', {
+  initialTheme,
   listTranslations: () => ipcRenderer.invoke(IpcChannels.ListTranslations),
   getActiveTranslation: () => ipcRenderer.invoke(IpcChannels.GetActiveTranslation),
   setActiveTranslation: (translation: string) =>
     ipcRenderer.invoke(IpcChannels.SetActiveTranslation, translation),
+  getTheme: () => ipcRenderer.invoke(IpcChannels.GetTheme),
+  setTheme: (theme: Theme) => ipcRenderer.invoke(IpcChannels.SetTheme, theme),
   findBibleBooks: (query: string, translation: string) =>
     ipcRenderer.invoke(IpcChannels.FindBibleBooks, query, translation),
   getChaptersForBook: (bookId: number) => ipcRenderer.invoke(IpcChannels.GetChaptersForBook, bookId),

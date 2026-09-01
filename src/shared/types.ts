@@ -1,4 +1,5 @@
 export type ContentType = 'bible' | 'song';
+export type Theme = 'light' | 'dark';
 export type Testament = 'OT' | 'NT' | 'AP';
 export type StagedItemType = ContentType;
 

@@ -21,6 +21,8 @@ beforeEach(() => {
     getOutputStyles: vi.fn().mockResolvedValue([]),
     listTranslations: vi.fn().mockResolvedValue(['KJV']),
     getActiveTranslation: vi.fn().mockResolvedValue('KJV'),
+    getTheme: vi.fn().mockResolvedValue('light'),
+    setTheme: vi.fn().mockResolvedValue(undefined),
     findBibleBooks: vi.fn().mockResolvedValue([]),
     findSongsByTitle: vi.fn().mockResolvedValue([]),
     getBlocksForSong: vi.fn().mockResolvedValue([]),

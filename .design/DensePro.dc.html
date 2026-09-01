@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace; }
+    a { color: #58c9b9; } a:hover { color: #85dbcd; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #17181a; color: #d6d8da; display: flex; flex-direction: column; overflow: hidden; font-size: 12px;">
+
+  <!-- Status strip: everything the operator must know, in one line -->
+  <div style="display: flex; align-items: stretch; height: 36px; flex-shrink: 0; background: #1e2023; border-bottom: 1px solid #2c2f33;">
+    <div style="display: flex; align-items: center; gap: 9px; padding: 0 14px; background: #b5271c; color: #fff;">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: #ffd4cf;"></span>
+      <span style="font-weight: 700; letter-spacing: .16em;">LIVE</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 14px; border-right: 1px solid #2c2f33;">
+      <span style="color: #6f757b;">ref</span><span style="font-weight: 600; color: #fff;">John 3:16</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 14px; border-right: 1px solid #2c2f33;">
+      <span style="color: #6f757b;">trans</span><span style="color: #d6d8da;">KJV</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 14px; border-right: 1px solid #2c2f33;">
+      <span style="color: #6f757b;">style</span><span style="color: #d6d8da;">bible/lower-third</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 14px; border-right: 1px solid #2c2f33;">
+      <span style="color: #6f757b;">elapsed</span><span style="color: #d6d8da;">00:02:14</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 9px; padding: 0 14px; border-left: 1px solid #2c2f33;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #3aa76d;"></span>
+      <span style="color: #8b9298;">:52731/output</span>
+      <span style="color: #6f757b;">1 client</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 9px; padding: 0 14px; border-left: 1px solid #2c2f33; color: #e0a343;">
+      <span style="font-weight: 600;">ESC</span><span style="color: #8b9298;">blank</span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-grow: 1; min-height: 0;">
+
+    <!-- col 1: sources -->
+    <div style="width: 250px; flex-shrink: 0; border-right: 1px solid #2c2f33; display: flex; flex-direction: column;">
+      <div style="padding: 8px 12px; background: #1e2023; border-bottom: 1px solid #2c2f33; color: #6f757b; letter-spacing: .16em; font-size: 10px; font-weight: 600;">SEARCH &#183; BIBLE</div>
+      <div style="padding: 8px 12px; border-bottom: 1px solid #232629; display: flex; align-items: center; gap: 8px;">
+        <span style="color: #58c9b9;">&#8250;</span><span style="color: #fff;">john</span><span style="width: 7px; height: 14px; background: #58c9b9;"></span>
+      </div>
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: #232629;"><span style="color: #58c9b9;">&#9656;</span><span style="color: #fff; flex-grow: 1;">John</span><span style="color: #6f757b;">21ch</span></div>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; padding: 6px 10px 8px;">
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">1</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">2</span>
+          <span style="text-align: center; padding: 5px 0; color: #17181a; background: #58c9b9; font-weight: 700;">3</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">4</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">5</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">6</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">7</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">8</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">9</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">10</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">11</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">12</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">13</span>
+          <span style="text-align: center; padding: 5px 0; color: #8b9298; background: #1e2023;">14</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 6px 12px;"><span style="color: #4a4f55;">&#9656;</span><span style="color: #8b9298; flex-grow: 1;">1 John</span><span style="color: #4a4f55;">5ch</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 6px 12px;"><span style="color: #4a4f55;">&#9656;</span><span style="color: #8b9298; flex-grow: 1;">2 John</span><span style="color: #4a4f55;">1ch</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 6px 12px;"><span style="color: #4a4f55;">&#9656;</span><span style="color: #8b9298; flex-grow: 1;">3 John</span><span style="color: #4a4f55;">1ch</span></div>
+      </div>
+
+      <div style="padding: 8px 12px; background: #1e2023; border-top: 1px solid #2c2f33; border-bottom: 1px solid #2c2f33; color: #6f757b; letter-spacing: .16em; font-size: 10px; font-weight: 600; margin-top: 10px;">SEARCH &#183; LYRICS</div>
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; gap: 8px; padding: 6px 12px;"><span style="color: #6f757b; width: 54px; flex-shrink: 0;">amaz/v1</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Amazing grace! how sweet</span></div>
+        <div style="display: flex; gap: 8px; padding: 6px 12px;"><span style="color: #6f757b; width: 54px; flex-shrink: 0;">hgta/v1</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">O Lord my God, when I in</span></div>
+      </div>
+    </div>
+
+    <!-- col 2: queue -->
+    <div style="width: 218px; flex-shrink: 0; border-right: 1px solid #2c2f33; display: flex; flex-direction: column;">
+      <div style="padding: 8px 12px; background: #1e2023; border-bottom: 1px solid #2c2f33; display: flex; color: #6f757b; letter-spacing: .16em; font-size: 10px; font-weight: 600;"><span style="flex-grow: 1;">QUEUE</span><span>4</span></div>
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 9px; padding: 9px 12px; background: #2a1a18; border-left: 2px solid #b5271c;">
+          <span style="color: #e0a343; font-weight: 700;">1</span>
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0;">
+            <span style="color: #fff; font-weight: 600;">John 3</span>
+            <span style="color: #6f757b; font-size: 11px;">bible &#183; 36 &#183; KJV</span>
+          </div>
+          <span style="color: #ff6b5c; font-size: 10px; font-weight: 700;">LIVE</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-left: 2px solid transparent;">
+          <span style="color: #6f757b; font-weight: 700;">2</span>
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0;">
+            <span style="color: #d6d8da;">Amazing Grace</span>
+            <span style="color: #4a4f55; font-size: 11px;">song &#183; 4 blocks</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-left: 2px solid transparent;">
+          <span style="color: #6f757b; font-weight: 700;">3</span>
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0;">
+            <span style="color: #d6d8da;">Psalm 23</span>
+            <span style="color: #4a4f55; font-size: 11px;">bible &#183; 6 &#183; KJV</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-left: 2px solid transparent;">
+          <span style="color: #6f757b; font-weight: 700;">4</span>
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0;">
+            <span style="color: #d6d8da;">How Great Thou Art</span>
+            <span style="color: #4a4f55; font-size: 11px;">song &#183; 4 blocks</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 8px 12px; background: #1e2023; border-top: 1px solid #2c2f33; border-bottom: 1px solid #2c2f33; color: #6f757b; letter-spacing: .16em; font-size: 10px; font-weight: 600; margin-top: 10px;">OUTPUT</div>
+      <div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex;"><span style="color: #6f757b; width: 66px;">visible</span><span style="color: #3aa76d;">yes</span></div>
+        <div style="display: flex;"><span style="color: #6f757b; width: 66px;">bible</span><span style="color: #d6d8da;">lower-third</span></div>
+        <div style="display: flex;"><span style="color: #6f757b; width: 66px;">song</span><span style="color: #d6d8da;">centre-large</span></div>
+        <div style="display: flex;"><span style="color: #6f757b; width: 66px;">updated</span><span style="color: #d6d8da;">10:14:31</span></div>
+      </div>
+    </div>
+
+    <!-- col 3: the chapter, dense -->
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
+      <div style="padding: 8px 14px; background: #1e2023; border-bottom: 1px solid #2c2f33; display: flex; align-items: center; gap: 14px; color: #6f757b; letter-spacing: .16em; font-size: 10px; font-weight: 600;">
+        <span>JOHN 3 &#183; KJV &#183; 36 VERSES</span><div style="flex-grow: 1;"></div><span style="color: #4a4f55; letter-spacing: .1em;">CLICK OR &#8593;&#8595; TO SEND</span>
+      </div>
+      <div style="display: flex; flex-direction: column;">
+
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">11</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Verily, verily, I say unto thee, We speak that we do know, and testify that we have seen&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">12</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">If I have told you earthly things, and ye believe not, how shall ye believe&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">13</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">And no man hath ascended up to heaven, but he that came down from heaven&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">14</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">And as Moses lifted up the serpent in the wilderness, even so must the Son of man be lifted up:</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">15</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">That whosoever believeth in him should not perish, but have eternal life.</span></div>
+
+        <div style="display: flex; gap: 12px; padding: 14px 14px; background: #2a1a18; border-left: 3px solid #b5271c; border-bottom: 1px solid #1e2023;">
+          <span style="color: #ff6b5c; font-weight: 700; width: 22px; text-align: right; flex-shrink: 0;">16</span>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.5; color: #fff; text-wrap: pretty;">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</span>
+            <span style="color: #ff6b5c; font-size: 10px; font-weight: 700; letter-spacing: .18em;">&#9679; ON AIR SINCE 10:14:31</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; padding: 9px 14px; background: #1b2422; border-left: 3px solid #58c9b9; border-bottom: 1px solid #1e2023;"><span style="color: #58c9b9; font-weight: 700; width: 22px; text-align: right; flex-shrink: 0;">17</span><span style="color: #d6d8da; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">For God sent not his Son into the world to condemn the world; but that the world through him might be saved.</span><span style="color: #58c9b9; font-size: 10px; font-weight: 700;">NEXT</span></div>
+
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">18</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">He that believeth on him is not condemned: but he that believeth not is condemned already&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">19</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">And this is the condemnation, that light is come into the world, and men loved darkness&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">20</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">For every one that doeth evil hateth the light, neither cometh to the light&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">21</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">But he that doeth truth cometh to the light, that his deeds may be made manifest&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">22</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">After these things came Jesus and his disciples into the land of Judaea&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">23</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">And John also was baptizing in Aenon near to Salim, because there was much water there&#8230;</span></div>
+        <div style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #1e2023;"><span style="color: #4a4f55; width: 22px; text-align: right; flex-shrink: 0;">24</span><span style="color: #8b9298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">For John was not yet cast into prison.</span></div>
+      </div>
+    </div>
+
+    <!-- col 4: what the stream shows -->
+    <div style="width: 268px; flex-shrink: 0; border-left: 1px solid #2c2f33; display: flex; flex-direction: column;">
+      <div style="padding: 8px 12px; background: #1e2023; border-bottom: 1px solid #2c2f33; color: #6f757b; letter-spacing: .16em; font-size: 10px; font-weight: 600;">OUTPUT PREVIEW</div>
+      <div style="padding: 12px;">
+        <div style="aspect-ratio: 16/9; background: #000; border: 1px solid #2c2f33; display: flex; align-items: flex-end; padding: 14px; box-sizing: border-box;">
+          <span style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; line-height: 1.4; color: #fff;">For God so loved the world, that he gave his only begotten Son&#8230;</span>
+        </div>
+      </div>
+      <div style="padding: 0 12px 12px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex;"><span style="color: #6f757b; width: 62px;">width</span><span style="color: #d6d8da;">1920</span></div>
+        <div style="display: flex;"><span style="color: #6f757b; width: 62px;">height</span><span style="color: #d6d8da;">1080</span></div>
+        <div style="display: flex;"><span style="color: #6f757b; width: 62px;">bg</span><span style="color: #d6d8da;">transparent</span></div>
+      </div>
+      <div style="padding: 8px 12px; background: #1e2023; border-top: 1px solid #2c2f33; border-bottom: 1px solid #2c2f33; color: #6f757b; letter-spacing: .16em; font-size: 10px; font-weight: 600;">LOG</div>
+      <div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; color: #6f757b; font-size: 11px;">
+        <span>10:14:31 <span style="color: #8b9298;">live john 3:16</span></span>
+        <span>10:13:02 <span style="color: #8b9298;">live john 3:15</span></span>
+        <span>10:12:48 <span style="color: #8b9298;">stage john 3</span></span>
+        <span>10:11:20 <span style="color: #e0a343;">blank on</span></span>
+        <span>10:02:07 <span style="color: #8b9298;">server :52731</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 22px; height: 30px; flex-shrink: 0; padding: 0 14px; background: #1e2023; border-top: 1px solid #2c2f33; color: #6f757b; font-size: 11px;">
+    <span><span style="color: #e0a343;">/</span> search</span>
+    <span><span style="color: #e0a343;">1-9</span> queue</span>
+    <span><span style="color: #e0a343;">&#8593;&#8595;</span> verse</span>
+    <span><span style="color: #e0a343;">esc</span> blank</span>
+    <div style="flex-grow: 1;"></div>
+    <span>556 songs &#183; 36,503 verses &#183; KJV NET NKJV</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

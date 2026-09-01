@@ -1,0 +1,240 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Console"
+    },
+    {
+      "id": "page-2",
+      "name": "Earlier directions"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Console — Light"
+    },
+    {
+      "file": "SanctuaryDark.dc.html",
+      "page": "page-1",
+      "x": 1620,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Console — Dark"
+    },
+    {
+      "file": "SearchOpen.dc.html",
+      "page": "page-1",
+      "x": 3240,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Console — Search open"
+    },
+    {
+      "file": "BroadcastDeck.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "01 · Broadcast Deck"
+    },
+    {
+      "file": "CommandPalette.dc.html",
+      "page": "page-2",
+      "x": 1620,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "03 · Command Palette"
+    },
+    {
+      "file": "SlideGrid.dc.html",
+      "page": "page-2",
+      "x": 3240,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "04 · Slide Grid"
+    },
+    {
+      "file": "PreviewProgram.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 1200,
+      "w": 1440,
+      "h": 900,
+      "title": "05 · Preview / Program"
+    },
+    {
+      "file": "ServiceRundown.dc.html",
+      "page": "page-2",
+      "x": 1620,
+      "y": 1200,
+      "w": 1440,
+      "h": 900,
+      "title": "06 · Service Rundown"
+    },
+    {
+      "file": "TouchConsole.dc.html",
+      "page": "page-2",
+      "x": 3240,
+      "y": 1200,
+      "w": 1440,
+      "h": 900,
+      "title": "07 · Touch Console"
+    },
+    {
+      "file": "FocusMode.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 2400,
+      "w": 1440,
+      "h": 900,
+      "title": "08 · Focus Mode"
+    },
+    {
+      "file": "Editorial.dc.html",
+      "page": "page-2",
+      "x": 1620,
+      "y": 2400,
+      "w": 1440,
+      "h": 900,
+      "title": "09 · Editorial"
+    },
+    {
+      "file": "DensePro.dc.html",
+      "page": "page-2",
+      "x": 3240,
+      "y": 2400,
+      "w": 1440,
+      "h": 900,
+      "title": "10 · Dense Pro"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "console-brief",
+      "page": "page-1",
+      "x": 0,
+      "y": -270,
+      "w": 1440,
+      "text": "ServiceFlow — the operator console\n\nDirection 02 (Sanctuary), built out light and dark, with the sidebar sized for a full service: 3 opening songs, 5 readings, 2 closing songs. Light and dark are the same markup — only the colour tokens differ — so both ship from one stylesheet, switched by a data-theme attribute on the root.\n\nThe toggle sits far right in the top bar, past a divider, so it is nowhere near Blank the screen. Inline SVG rather than emoji: everything else in the UI is stroke SVG at the same weight, emoji can't take the copper accent, and they render differently on every OS."
+    },
+    {
+      "id": "note-light",
+      "page": "page-1",
+      "x": 0,
+      "y": 940,
+      "w": 1440,
+      "text": "LIGHT — the default, sun lit. Ten cards fit with no scrolling: each is 58px, one line of title and one of detail, and the live card is marked by a copper border and tint rather than extra height, so nothing reflows when the live item changes.\nItem 10 is keyed 0, not 10 — the existing shortcut handler matches /^[1-9]$/, so it needs one character widening to /^[0-9]$/. Beyond 10 items the list scrolls; the live card stays pinned in view."
+    },
+    {
+      "id": "note-dark",
+      "page": "page-1",
+      "x": 1620,
+      "y": 940,
+      "w": 1440,
+      "text": "DARK — moon lit. Same warm hues held at dark lightness rather than a cool grey inversion, so it still reads as the same product. Copper lifts to #d09650 and green to #4fae76 to hold contrast on the dark ground; the Blank button inverts to a light fill so it stays the strongest control on screen.\nPersistence follows the pattern already in the codebase: app_settings is a plain key/value table, so this is setSetting(db, 'theme', 'dark') beside SETTING_TRANSLATION, plus a get/set IPC pair. Read it in the main process before the window paints, so a dark-mode operator never gets a white flash on launch.\nWorth checking on the real booth monitor before we commit — dark warm tones are what cheap panels render worst."
+    },
+    {
+      "id": "note-search",
+      "page": "page-1",
+      "x": 3240,
+      "y": 940,
+      "w": 1440,
+      "text": "SEARCH OPEN — the change the 10-card sidebar forced. In the original board the book list and chapter grid sat stacked above the service list, which cost about 200px; ten cards need that space. So results now float over the list as you type and dismiss on Esc, and the service list is never displaced.\nThis is the one interaction I'd want you to sanity-check: it means you cannot see the service order and browse for a chapter at the same time."
+    },
+    {
+      "id": "page2-brief",
+      "page": "page-2",
+      "x": 0,
+      "y": -220,
+      "w": 1440,
+      "text": "The nine directions not chosen, kept for reference. Numbering is unchanged from the first round — 02 became the console on the previous page. Say the word if you want something lifted out of one of these into the build."
+    },
+    {
+      "id": "opt-01",
+      "page": "page-2",
+      "x": 0,
+      "y": 940,
+      "w": 1440,
+      "text": "01 · BROADCAST DECK — the safe, professional default. Dark cool neutrals, three fixed columns, a red ON AIR readout that is the loudest thing on screen.\nTradeoff: it looks like every other production tool."
+    },
+    {
+      "id": "opt-03",
+      "page": "page-2",
+      "x": 1620,
+      "y": 940,
+      "w": 1440,
+      "text": "03 · COMMAND PALETTE — almost no permanent chrome; one palette does searching, staging and actions in the same keystroke.\nTradeoff: rewards the operator who knows it, punishes the one who doesn't."
+    },
+    {
+      "id": "opt-04",
+      "page": "page-2",
+      "x": 3240,
+      "y": 940,
+      "w": 1440,
+      "text": "04 · SLIDE GRID — every verse is a 16:9 tile rendered as the stream will render it, so you pick a picture rather than a line of text.\nTradeoff: far less dense than rows; long verses truncate in the thumbnail."
+    },
+    {
+      "id": "opt-05",
+      "page": "page-2",
+      "x": 0,
+      "y": 2140,
+      "w": 1440,
+      "text": "05 · PREVIEW / PROGRAM — the video-switcher model. Nothing reaches the stream until you press TAKE, so a misclick costs nothing.\nTradeoff: a deliberate second step on every change."
+    },
+    {
+      "id": "opt-06",
+      "page": "page-2",
+      "x": 1620,
+      "y": 2140,
+      "w": 1440,
+      "text": "06 · SERVICE RUNDOWN — the staged list becomes a run of show: what's done, what's live with a timer, what's next.\nTradeoff: implies planning ahead; staging on the fly makes the timeline decoration."
+    },
+    {
+      "id": "opt-07",
+      "page": "page-2",
+      "x": 3240,
+      "y": 2140,
+      "w": 1440,
+      "text": "07 · TOUCH CONSOLE — everything a large tile, nothing under 44px, giant Previous/Next. Works with a finger, standing up.\nTradeoff: biggest targets means the least on screen."
+    },
+    {
+      "id": "opt-08",
+      "page": "page-2",
+      "x": 0,
+      "y": 3340,
+      "w": 1440,
+      "text": "08 · FOCUS MODE — the live verse at 43px on black and almost nothing else; the verse list slides away while live.\nTradeoff: the least capable board here."
+    },
+    {
+      "id": "opt-09",
+      "page": "page-2",
+      "x": 1620,
+      "y": 3340,
+      "w": 1440,
+      "text": "09 · EDITORIAL — cream and ink, Spectral throughout, hairline rules instead of boxes, the service set as a contents page.\nTradeoff: craft over legibility-at-a-glance; the live state is the quietest of the ten."
+    },
+    {
+      "id": "opt-10",
+      "page": "page-2",
+      "x": 3240,
+      "y": 3340,
+      "w": 1440,
+      "text": "10 · DENSE PRO — four columns, monospaced, nothing hidden: port and client count, output preview, running action log.\nTradeoff: 11–12px monospace; hostile to a new volunteer."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}

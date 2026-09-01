@@ -2,6 +2,8 @@ export const IpcChannels = {
   ListTranslations: 'bible:list-translations',
   GetActiveTranslation: 'bible:get-active-translation',
   SetActiveTranslation: 'bible:set-active-translation',
+  GetTheme: 'app:get-theme',
+  SetTheme: 'app:set-theme',
   FindBibleBooks: 'bible:find-books',
   GetChaptersForBook: 'bible:get-chapters',
   GetVersesForChapter: 'bible:get-verses',

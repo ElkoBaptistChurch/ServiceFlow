@@ -6,3 +6,7 @@ release/
 *.db
 openlp/
 .DS_Store
+
+# Seeded design canvases (~2.6MB each, regenerated from the .dc.html sources)
+.design/*.html
+!.design/*.dc.html

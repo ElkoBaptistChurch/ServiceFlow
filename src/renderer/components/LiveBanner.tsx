@@ -15,8 +15,11 @@ export default function LiveBanner({ liveState }: Props) {
         : `LIVE: ${liveState.reference}`;
 
   return (
-    <div role="status" data-hidden={liveState.hidden ? 'true' : 'false'}>
-      {label}
+    <div className="live-pill" role="status" data-hidden={liveState.hidden ? 'true' : 'false'}>
+      {liveState.reference != null && (
+        <span className={`live-pill__dot ${liveState.hidden ? 'live-pill__dot--blank' : ''}`} />
+      )}
+      <span>{label}</span>
     </div>
   );
 }
