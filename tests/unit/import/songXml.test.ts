@@ -45,6 +45,50 @@ describe('parseSongLyrics', () => {
   });
 });
 
+describe('parseSongLyrics — malformed markup resilience', () => {
+  it('extracts text from multi-section CDATA', () => {
+    // What a real XML writer emits when a lyric contains a literal ']]>'.
+    const xml = `<song><lyrics><verse type="v" label="1"><![CDATA[Amazing grace]]><![CDATA[how sweet]]></verse></lyrics></song>`;
+    expect(parseSongLyrics(xml)[0].text).toBe('Amazing gracehow sweet');
+  });
+
+  it('preserves separation around inline markup', () => {
+    const xml = `<song><lyrics><verse type="v" label="1">Line one<br/>Line two</verse></lyrics></song>`;
+    expect(parseSongLyrics(xml)[0].text).toBe('Line one\nLine two');
+  });
+
+  it('extracts text nested in a child element', () => {
+    const xml = `<song><lyrics><verse name="v1"><lines>Amazing grace</lines></verse></lyrics></song>`;
+    expect(parseSongLyrics(xml)[0].text).toBe('Amazing grace');
+  });
+
+  it('joins CDATA with trailing plain text instead of dropping it', () => {
+    const xml = `<song><lyrics><verse type="v" label="1"><![CDATA[Amazing]]> grace</verse></lyrics></song>`;
+    expect(parseSongLyrics(xml)[0].text).toBe('Amazing grace');
+  });
+
+  it('drops a verse block whose text is empty after trimming', () => {
+    const xml = `<song><lyrics><verse type="v" label="1">   </verse><verse type="v" label="2">Real text</verse></lyrics></song>`;
+    expect(parseSongLyrics(xml)).toHaveLength(1);
+    expect(parseSongLyrics(xml)[0].text).toBe('Real text');
+  });
+
+  it('recovers text from a verse whose closing tag was truncated', () => {
+    const xml = `<song><lyrics><verse type="v" label="1">abc</lyrics></song>`;
+    expect(parseSongLyrics(xml)[0].text).toBe('abc');
+  });
+
+  it('does not coerce numeric-looking lyric text', () => {
+    const xml = `<song><lyrics><verse type="v" label="1">0123</verse></lyrics></song>`;
+    expect(parseSongLyrics(xml)[0].text).toBe('0123');
+  });
+
+  it('returns no blocks when a song has two sibling <lyrics> elements', () => {
+    const xml = `<song><lyrics><verse type="v" label="1">A</verse></lyrics><lyrics><verse type="v" label="1">B</verse></lyrics></song>`;
+    expect(parseSongLyrics(xml)).toHaveLength(0);
+  });
+});
+
 describe('typeCodeToName', () => {
   it('maps known OpenLP type codes to display names', () => {
     expect(typeCodeToName('v')).toBe('Verse');

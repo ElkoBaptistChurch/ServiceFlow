@@ -2,6 +2,26 @@ import Database from 'better-sqlite3';
 import { BibleBook, BibleSearchResult, BibleVerse, Testament } from '../../shared/types';
 import { toFtsQuery } from './fts';
 
+// Escapes SQL LIKE metacharacters so a literal '%' or '_' typed into the browse box
+// matches itself instead of acting as a wildcard (see D-10).
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+// SQLite's built-in LIKE only case-folds ASCII, so an accented book name uppercased
+// by the source file (common outside English OpenLP bibles) is otherwise unsearchable
+// unless the operator matches the accent's case exactly (see I-10). Registered lazily,
+// once per connection — PRAGMA case_sensitive_like is deliberately not used; it only
+// ever makes LIKE *more* case-sensitive.
+const unicodeFoldRegistered = new WeakSet<Database.Database>();
+function ensureUnicodeFold(db: Database.Database): void {
+  if (unicodeFoldRegistered.has(db)) return;
+  db.function('unicode_fold', { deterministic: true }, (value: unknown) =>
+    value == null ? null : String(value).toLowerCase()
+  );
+  unicodeFoldRegistered.add(db);
+}
+
 function rowToBook(row: any): BibleBook {
   return {
     id: row.id,
@@ -25,9 +45,14 @@ export function listTranslations(db: Database.Database): string[] {
 }
 
 export function findBooksByName(db: Database.Database, query: string, translation: string): BibleBook[] {
+  ensureUnicodeFold(db);
   const rows = db
-    .prepare(`SELECT * FROM bible_books WHERE translation = ? AND name LIKE ? ORDER BY sort_order LIMIT 20`)
-    .all(translation, `%${query}%`);
+    .prepare(
+      `SELECT * FROM bible_books
+       WHERE translation = ? AND unicode_fold(name) LIKE unicode_fold(?) ESCAPE '\\'
+       ORDER BY sort_order LIMIT 20`
+    )
+    .all(translation, `%${escapeLikePattern(query)}%`);
   return rows.map(rowToBook);
 }
 

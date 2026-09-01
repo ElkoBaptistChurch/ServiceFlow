@@ -134,4 +134,61 @@ describe('importOpenlpSongs', () => {
     expect(badRow!.reason).toBe('song has no lyrics data');
     expect(badRow!.reason).not.toMatch(/cannot read properties/i);
   });
+
+  // I-01: OpenLP does not enforce a unique title (two arrangements of the same hymn is
+  // routine in a real church library), but this app's songs.title is UNIQUE. Without
+  // disambiguation the second row's upsert silently deletes the first row's blocks
+  // while still reporting both as imported.
+  it('does not overwrite a song when a later row has the same title', () => {
+    const fixturePath = createFixtureSongsDb([
+      { title: 'Amazing Grace', lyrics: ALL_CREATURES_XML, ccliNumber: '111' },
+      { title: 'Amazing Grace', lyrics: HOW_SWEET_XML, ccliNumber: '222' },
+    ]);
+
+    const summary = importOpenlpSongs(mainDb, fixturePath);
+
+    expect(summary.imported).toBe(2);
+    const songs = findSongsByTitle(mainDb, 'Amazing Grace');
+    expect(songs).toHaveLength(2);
+    const blockSets = songs.map((s) => getBlocksForSong(mainDb, s.id).map((b) => b.text));
+    // Both arrangements' blocks survive somewhere — neither was wiped by the other.
+    expect(blockSets.some((texts) => texts.some((t) => t.includes('All creatures')))).toBe(true);
+    expect(blockSets.some((texts) => texts.some((t) => t.includes('How sweet the name')))).toBe(true);
+  });
+
+  // I-12: SQLite's default BINARY collation treats these as three distinct rows, but
+  // findSongsByTitle's LIKE is case-insensitive, so they'd appear together in search
+  // results with no way to tell them apart.
+  it('treats titles differing only in whitespace as the same song', () => {
+    const fixturePath = createFixtureSongsDb([
+      { title: '  Amazing Grace  ', lyrics: ALL_CREATURES_XML },
+    ]);
+
+    importOpenlpSongs(mainDb, fixturePath);
+
+    const songs = findSongsByTitle(mainDb, 'Amazing Grace');
+    expect(songs).toHaveLength(1);
+    expect(songs[0].title).toBe('Amazing Grace');
+  });
+
+  // D-12: editing a song's title in OpenLP between imports must not silently orphan
+  // the old row forever — the operator needs to be told, and nothing gets deleted
+  // without asking.
+  it('reports songs that no longer exist in the source file', () => {
+    const fixturePath = createFixtureSongsDb([{ title: 'Original Title', lyrics: ALL_CREATURES_XML }]);
+    importOpenlpSongs(mainDb, fixturePath);
+
+    // Simulate the volunteer renaming the song inside OpenLP, then re-importing the
+    // same database file.
+    const source = new Database(fixturePath);
+    source.prepare(`UPDATE songs SET title = ? WHERE title = ?`).run('Renamed Title', 'Original Title');
+    source.close();
+
+    const summary = importOpenlpSongs(mainDb, fixturePath);
+
+    expect(findSongsByTitle(mainDb, 'Original Title')).toHaveLength(1); // not deleted
+    expect(findSongsByTitle(mainDb, 'Renamed Title')).toHaveLength(1);
+    const orphanNotice = summary.errors.find((e) => e.identifier === 'Original Title');
+    expect(orphanNotice).toBeDefined();
+  });
 });
