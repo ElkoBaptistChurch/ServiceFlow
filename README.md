@@ -43,9 +43,19 @@ When `npm run package` finishes, the installer is at:
 release\ServiceFlow-Setup-0.1.0.exe
 ```
 
-If you'd rather not build by hand every time, the same steps can run
-automatically in GitHub Actions on a `windows-latest` runner — worth setting
-up once this is going to be built more than once.
+If you'd rather not build by hand, these same steps already run automatically
+in GitHub Actions on a Windows machine (`.github/workflows/build.yml`), on
+every push to `main` and on demand from the repository's **Actions** tab. Each
+run attaches the finished installer as a downloadable artifact named
+`ServiceFlow-Setup`.
+
+To publish an installer somewhere easier to point people at, push a version
+tag and it lands on the repository's **Releases** page:
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 Copy that one `.exe` file to the church's PC (a USB drive or a file share both
 work fine) and continue with installing, below.

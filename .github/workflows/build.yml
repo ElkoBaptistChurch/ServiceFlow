@@ -1,0 +1,78 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run redundant.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+  installer:
+    name: Windows installer
+    needs: check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      # better-sqlite3 arrives from `npm ci` compiled for Node, not for
+      # Electron. Packaging without this step produces an installer whose
+      # database silently fails the first time the app is opened. It is a
+      # separate step (rather than an install hook) so the `check` job above
+      # can still run the test suite against the Node build. See README §1.
+      - run: npm run rebuild:electron
+
+      # `--publish never`: uploading to GitHub Releases is the job of the
+      # explicit step below, not a side effect of electron-builder noticing
+      # it is running on a tag.
+      - run: npm run package -- --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ServiceFlow-Setup
+          path: release/*.exe
+          if-no-files-found: error
+
+      # Tagging a release (`git tag v0.1.0 && git push origin v0.1.0`) puts
+      # the installer on the repository's Releases page, which is an easier
+      # download to point a non-technical installer at than a CI artifact.
+      - name: Publish installer to GitHub Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" release/*.exe --generate-notes
