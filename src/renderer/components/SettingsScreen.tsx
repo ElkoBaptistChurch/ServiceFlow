@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import type { ContentType, ImportSummary, OutputStyle } from '../../shared/types';
+import type { ContentType, ImportError, ImportSummary, OutputStyle } from '../../shared/types';
+
+// Importers pass raw SQLite error text straight through as `reason` alongside their own
+// hand-authored sentences (e.g. "song has no lyrics data"). A volunteer can't parse
+// "NOT NULL constraint failed: bible_verses.text" -- flag it as technical rather than
+// pretend it explains anything.
+const RAW_SQLITE_TEXT = /constraint failed|no such (?:column|table)|SQLITE_/i;
+
+function describeSkipReason(reason: string): string {
+  return RAW_SQLITE_TEXT.test(reason) ? `technical detail: ${reason}` : reason;
+}
 
 interface Props {
   /** Lets App re-render search/content against the newly chosen translation. */
@@ -8,11 +18,15 @@ interface Props {
 
 export default function SettingsScreen({ onTranslationChange }: Props) {
   const [urls, setUrls] = useState<{ local: string; lan: string | null } | null>(null);
+  // Distinguishes "haven't fetched yet" from "fetched and got nothing" so a failed or
+  // null response shows an explicit error rather than silently hiding the whole section.
+  const [urlsFailed, setUrlsFailed] = useState(false);
   const [bibleStyles, setBibleStyles] = useState<OutputStyle[]>([]);
   const [songStyles, setSongStyles] = useState<OutputStyle[]>([]);
   const [translations, setTranslations] = useState<string[]>([]);
   const [translation, setTranslation] = useState<string>('');
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [importing, setImporting] = useState(false);
   // Which URL was just copied, so the button can confirm it worked. A non-technical
   // volunteer hand-transcribing an IP-and-port URL into OBS is exactly the situation a
   // silent no-op (or a silent throw, if navigator.clipboard is unavailable) would hurt.
@@ -36,8 +50,19 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
     window.api.getActiveTranslation().then((t) => setTranslation(t ?? ''));
   };
 
+  const loadServerUrls = () => {
+    setUrlsFailed(false);
+    window.api
+      .getServerUrls()
+      .then((result) => {
+        if (result) setUrls(result);
+        else setUrlsFailed(true);
+      })
+      .catch(() => setUrlsFailed(true));
+  };
+
   useEffect(() => {
-    window.api.getServerUrls().then(setUrls);
+    loadServerUrls();
     window.api.getOutputStyles('bible').then(setBibleStyles);
     window.api.getOutputStyles('song').then(setSongStyles);
     loadTranslations();
@@ -56,11 +81,17 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
   }
 
   async function runImport() {
-    const files = await window.api.pickOpenlpFiles();
-    if (files.length === 0) return;
-    // The main process classifies each file by its schema — no filename guessing here.
-    setSummary(await window.api.importOpenlp(files));
-    loadTranslations();
+    if (importing) return;
+    setImporting(true);
+    try {
+      const files = await window.api.pickOpenlpFiles();
+      if (files.length === 0) return;
+      // The main process classifies each file by its schema — no filename guessing here.
+      setSummary(await window.api.importOpenlp(files));
+      loadTranslations();
+    } finally {
+      setImporting(false);
+    }
   }
 
   function styleSection(contentType: ContentType, styles: OutputStyle[]) {
@@ -108,6 +139,14 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
             )}
           </ul>
         )}
+        {urlsFailed && (
+          <p>
+            Could not load the server URLs.{' '}
+            <button type="button" aria-label="Refresh server URLs" onClick={loadServerUrls}>
+              Refresh
+            </button>
+          </p>
+        )}
         <p>
           In OBS: Sources → + → Browser Source → paste one of the URLs above → set width/height to your stream
           resolution → check "Shutdown source when not visible" off.
@@ -121,6 +160,15 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
           value={translation}
           onChange={(e) => chooseTranslation(e.target.value)}
         >
+          {/* Two independent async loads: the active translation can arrive as a value
+              the list doesn't contain. Rather than let the browser silently fall back to
+              selecting the first option, show the stored value as its own disabled entry
+              so the dropdown never disagrees with what's actually in effect. */}
+          {translation !== '' && !translations.includes(translation) && (
+            <option value={translation} disabled>
+              {translation} (not imported)
+            </option>
+          )}
           {translations.map((t) => (
             <option key={t} value={t}>
               {t}
@@ -134,15 +182,25 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
       <section>
         <h3>Import from OpenLP</h3>
         <p>Pick your OpenLP song database and any Bible translation files — ServiceFlow works out which is which.</p>
-        <button onClick={runImport}>Import from OpenLP</button>
+        <button onClick={runImport} disabled={importing}>
+          {importing ? 'Importing…' : 'Import from OpenLP'}
+        </button>
         {summary && (
           <ul>
-            {summary.sources.map((s) => (
-              <li key={s.file}>
+            {summary.sources.map((s, i) => (
+              <li key={i}>
                 {s.file} ({s.kind}
                 {s.translation ? `, ${s.translation}` : ''}): {s.imported.toLocaleString()} imported,{' '}
                 {s.skipped} skipped
-                {s.errors.length > 0 && ` — ${s.errors.slice(0, 5).map((e) => e.identifier).join(', ')}`}
+                {s.errors.length > 0 && (
+                  <ul>
+                    {s.errors.slice(0, 5).map((e: ImportError, j) => (
+                      <li key={j}>
+                        {e.identifier} — {describeSkipReason(e.reason)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>

@@ -26,6 +26,10 @@ export default function SearchPanel({ translation, onStaged }: Props) {
   const [selectedBook, setSelectedBook] = useState<BibleBook | null>(null);
   const [chapters, setChapters] = useState<number[]>([]);
   const [contentResults, setContentResults] = useState<{ label: string; onSelect: () => void }[]>([]);
+  // True while a search is in flight, so the "No matches" line can be shown only once a
+  // search has actually finished with nothing -- otherwise it flashes during every
+  // debounce + IPC round trip before the real results replace it.
+  const [searching, setSearching] = useState(false);
   // Monotonic sequence number so a slow, older query can never overwrite a newer one's
   // results if it resolves later: each search captures the id current at fire time and
   // only commits state if it is still the latest one issued by the time it resolves.
@@ -35,11 +39,13 @@ export default function SearchPanel({ translation, onStaged }: Props) {
     setSelectedBook(null);
     setChapters([]);
     setContentResults([]);
+    setBooks([]);
+    setSongs([]);
     if (query.trim() === '') {
-      setBooks([]);
-      setSongs([]);
+      setSearching(false);
       return;
     }
+    setSearching(true);
     const handle = setTimeout(() => {
       const requestId = ++searchSeq.current;
       const isStale = () => requestId !== searchSeq.current;
@@ -47,11 +53,13 @@ export default function SearchPanel({ translation, onStaged }: Props) {
         window.api.findBibleBooks(query, translation).then((results) => {
           if (isStale()) return;
           setBooks(results);
+          setSearching(false);
         });
       } else if (subMode === 'browse' && mode === 'song') {
         window.api.findSongsByTitle(query).then((results) => {
           if (isStale()) return;
           setSongs(results);
+          setSearching(false);
         });
       } else if (subMode === 'content' && mode === 'bible') {
         window.api.searchBibleContent(query, translation).then((results) => {
@@ -67,6 +75,7 @@ export default function SearchPanel({ translation, onStaged }: Props) {
                   .then((item) => onStaged(item, r.verse.id)),
             }))
           );
+          setSearching(false);
         });
       } else {
         window.api.searchSongContent(query).then((results) => {
@@ -78,15 +87,24 @@ export default function SearchPanel({ translation, onStaged }: Props) {
                 window.api.stageItem('song', r.block.songId, null).then((item) => onStaged(item, r.block.id)),
             }))
           );
+          setSearching(false);
         });
       }
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
   }, [query, mode, subMode, translation]);
 
+  // Same monotonic-sequence idiom as the search effect above, applied to the one other
+  // async path in this file: a slow chapter fetch for a book the operator has already
+  // clicked past must not overwrite the chapters of the book now selected.
+  const bookSeq = useRef(0);
+
   async function selectBook(book: BibleBook) {
     setSelectedBook(book);
-    setChapters(await window.api.getChaptersForBook(book.id));
+    const requestId = ++bookSeq.current;
+    const chaptersForBook = await window.api.getChaptersForBook(book.id);
+    if (requestId !== bookSeq.current) return;
+    setChapters(chaptersForBook);
   }
 
   return (
@@ -115,7 +133,7 @@ export default function SearchPanel({ translation, onStaged }: Props) {
       />
       {subMode === 'browse' && mode === 'bible' && !selectedBook && (
         <ul>
-          {books.length === 0 && query.trim() !== '' && <li>No matches</li>}
+          {books.length === 0 && query.trim() !== '' && !searching && <li>No matches</li>}
           {books.map((b) => (
             <li key={b.id}>
               <button onClick={() => selectBook(b)}>{b.name}</button>
@@ -124,19 +142,24 @@ export default function SearchPanel({ translation, onStaged }: Props) {
         </ul>
       )}
       {subMode === 'browse' && mode === 'bible' && selectedBook && (
-        <ul>
-          {chapters.map((c) => (
-            <li key={c}>
-              <button onClick={() => window.api.stageItem('bible', selectedBook.id, c).then((item) => onStaged(item, null))}>
-                {c}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div>
+          <button onClick={() => { setSelectedBook(null); setChapters([]); }}>
+            &larr; Back to {selectedBook.name}
+          </button>
+          <ul>
+            {chapters.map((c) => (
+              <li key={c}>
+                <button onClick={() => window.api.stageItem('bible', selectedBook.id, c).then((item) => onStaged(item, null))}>
+                  {c}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {subMode === 'browse' && mode === 'song' && (
         <ul>
-          {songs.length === 0 && query.trim() !== '' && <li>No matches</li>}
+          {songs.length === 0 && query.trim() !== '' && !searching && <li>No matches</li>}
           {songs.map((s) => (
             <li key={s.id}>
               <button onClick={() => window.api.stageItem('song', s.id, null).then((item) => onStaged(item, null))}>
@@ -148,7 +171,7 @@ export default function SearchPanel({ translation, onStaged }: Props) {
       )}
       {subMode === 'content' && (
         <ul>
-          {contentResults.length === 0 && query.trim() !== '' && <li>No matches</li>}
+          {contentResults.length === 0 && query.trim() !== '' && !searching && <li>No matches</li>}
           {contentResults.map((r, i) => (
             <li key={i}>
               <button onClick={r.onSelect}>{r.label}</button>

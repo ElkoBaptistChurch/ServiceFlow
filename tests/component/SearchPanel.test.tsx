@@ -167,4 +167,74 @@ describe('SearchPanel', () => {
     expect(screen.getByText(/John 3:16/)).toBeInTheDocument();
     expect(screen.queryByText(/John 3:19/)).not.toBeInTheDocument();
   });
+
+  // R-08: results from the previous query must not stay listed (and clickable) while a
+  // newer query is in flight, and "No matches" must not flash before the new results land.
+  it('does not show previous results under a new query', async () => {
+    let resolveGen: (v: any) => void;
+    const genPromise = new Promise((resolve) => { resolveGen = resolve; });
+    (window.api.findBibleBooks as any).mockImplementation((q: string) => {
+      if (q === 'gen') return genPromise;
+      return new Promise(() => {}); // 'genxyz' never resolves in this test
+    });
+
+    render(<SearchPanel translation="KJV" onStaged={vi.fn()} />);
+    const input = screen.getByPlaceholderText(/search/i);
+
+    fireEvent.change(input, { target: { value: 'gen' } });
+    await waitFor(() => expect(window.api.findBibleBooks).toHaveBeenCalledWith('gen', 'KJV'));
+    const GENESIS = { id: 1, translation: 'KJV', sourceBookId: 1, name: 'Genesis', testament: 'OT', sortOrder: 1 };
+    resolveGen!([GENESIS]);
+    await screen.findByText('Genesis');
+
+    fireEvent.change(input, { target: { value: 'genxyz' } });
+    await waitFor(() => expect(window.api.findBibleBooks).toHaveBeenCalledWith('genxyz', 'KJV'));
+
+    expect(screen.queryByText('Genesis')).not.toBeInTheDocument();
+    expect(screen.queryByText(/no matches/i)).not.toBeInTheDocument();
+  });
+
+  // R-09: selectBook has no stale-response guard -- a slow chapter fetch for a book the
+  // operator already clicked past must not overwrite the chapters of the book now selected.
+  it('ignores a slow chapter fetch for a book that is no longer selected', async () => {
+    const LAMENTATIONS = { id: 25, translation: 'KJV', sourceBookId: 25, name: 'Lamentations', testament: 'OT', sortOrder: 25 };
+    const PSALMS = { id: 19, translation: 'KJV', sourceBookId: 19, name: 'Psalms', testament: 'OT', sortOrder: 19 };
+    (window.api.findBibleBooks as any).mockResolvedValue([LAMENTATIONS, PSALMS]);
+
+    let resolveLam: (v: any) => void;
+    const lamPromise = new Promise((resolve) => { resolveLam = resolve; });
+    (window.api.getChaptersForBook as any).mockImplementation((id: number) => {
+      if (id === 25) return lamPromise;
+      if (id === 19) return Promise.resolve([1, 2, 3]);
+      return Promise.resolve([]);
+    });
+
+    render(<SearchPanel translation="KJV" onStaged={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'la' } });
+
+    fireEvent.click(await screen.findByText('Lamentations'));
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    fireEvent.click(await screen.findByText('Psalms'));
+    await waitFor(() => expect(window.api.getChaptersForBook).toHaveBeenCalledWith(19));
+    await screen.findByText('3');
+
+    resolveLam!([150]);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(screen.queryByText('150')).not.toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  // R-10: once a book is picked there must be a way back to the book list.
+  it('can return to the book list after selecting a book', async () => {
+    render(<SearchPanel translation="KJV" onStaged={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'joh' } });
+    fireEvent.click(await screen.findByText('John'));
+    await screen.findByText('3');
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+
+    expect(await screen.findByText('John')).toBeInTheDocument();
+    expect(screen.queryByText('3')).not.toBeInTheDocument();
+  });
 });
