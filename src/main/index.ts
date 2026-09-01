@@ -33,6 +33,20 @@ let quitting = false;
 // OBS stays connected to the first instance. The operator's banner and the stream can then
 // disagree indefinitely, which is exactly what this app exists to prevent. So the lock must
 // be taken before anything else touches the database or the network.
+// Defense in depth for the M-01 crash class (an unhandled 'error' event anywhere in the
+// process throws and takes the whole app down with no dialog, no window, no clue for the
+// volunteer at the console). The per-socket listener in server.ts closes the specific hole
+// that bug traced through; this is the backstop for the next one like it.
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception', err);
+  dialog.showErrorBox(
+    'ServiceFlow hit an unexpected error',
+    `ServiceFlow ran into a problem and needs to close: ${err.message ?? err}\n\n` +
+      'If this keeps happening, please report it.'
+  );
+  app.quit();
+});
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
