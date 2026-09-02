@@ -56,20 +56,15 @@ describe('StagedList', () => {
   });
 
   // R-07: reorderStagedItems is fully wired end to end but nothing ever called it -- the
-  // operator had no way to control the running order the 1-9 hotkeys map to.
-  it('reorders items and calls reorderStagedItems with the new order', async () => {
+  // operator had no way to control the running order.
+  it('reorders items via drag-and-drop and calls reorderStagedItems with the new order', async () => {
     render(
       <StagedList items={items} activeItemId={null} liveStagedItemId={null} onSelectActive={vi.fn()} onChanged={vi.fn()} />
     );
-    fireEvent.click(screen.getByRole('button', { name: /move amazing grace up/i }));
+    const cards = screen.getAllByRole('listitem');
+    fireEvent.dragStart(cards[1]);
+    fireEvent.dragOver(cards[0]);
+    fireEvent.drop(cards[0]);
     await waitFor(() => expect(window.api.reorderStagedItems).toHaveBeenCalledWith([2, 1]));
-  });
-
-  it('renders the 1-9 position number next to each of the first nine items', () => {
-    render(
-      <StagedList items={items} activeItemId={null} liveStagedItemId={null} onSelectActive={vi.fn()} onChanged={vi.fn()} />
-    );
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
   });
 });

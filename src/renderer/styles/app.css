@@ -464,23 +464,25 @@ button {
   box-shadow: 0 2px 8px var(--shadow-live);
 }
 
-.staged-card__badge {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+/* Which item the operator is currently browsing, independent of what's live on the
+   stream — this must move the instant a book/chapter/song is selected, not wait for a
+   verse to go live. Kept visually distinct from --live so the two never look the same. */
+.staged-card--browsing:not(.staged-card--live) {
+  border-color: var(--border-strong);
   background: var(--chip);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
+}
+
+.staged-card__handle {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  color: var(--muted-3);
+  cursor: grab;
 }
 
-.staged-card--live .staged-card__badge {
-  background: var(--accent);
-  color: var(--surface);
+.staged-card--drag-over {
+  border-color: var(--accent);
 }
 
 .staged-card__body {

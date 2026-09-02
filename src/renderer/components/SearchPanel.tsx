@@ -27,9 +27,15 @@ interface Props {
    * render (tests) doesn't need to supply it.
    */
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Hands App a callback that clears the query, so a global Escape can close this popover
+   * even when focus has moved onto one of the popover's own buttons (App's own listener
+   * only exempts INPUT/TEXTAREA/SELECT, not these).
+   */
+  registerClose?: (close: () => void) => void;
 }
 
-export default function SearchPanel({ translation, onStaged, onOpenChange }: Props) {
+export default function SearchPanel({ translation, onStaged, onOpenChange, registerClose }: Props) {
   const [mode, setMode] = useState<Mode>('bible');
   const [subMode, setSubMode] = useState<SubMode>('browse');
   const [query, setQuery] = useState('');
@@ -55,6 +61,10 @@ export default function SearchPanel({ translation, onStaged, onOpenChange }: Pro
   useEffect(() => {
     onOpenChange?.(isOpen);
   }, [isOpen, onOpenChange]);
+
+  useEffect(() => {
+    registerClose?.(() => setQuery(''));
+  }, [registerClose]);
 
   useEffect(() => {
     setSelectedBook(null);

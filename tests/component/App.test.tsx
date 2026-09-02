@@ -59,22 +59,6 @@ describe('App', () => {
     expect(input).toHaveFocus();
   });
 
-  it('jumps to a staged item\'s content pane when its number key is pressed', async () => {
-    (window.api.getStagedItems as any).mockResolvedValue([
-      { id: 1, type: 'bible', refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' },
-      { id: 2, type: 'song', refId: 1, chapter: null, position: 1, label: 'Amazing Grace' },
-    ]);
-    (window.api.getBlocksForSong as any).mockResolvedValue([
-      { id: 200, songId: 1, label: 'Verse 1', text: 'Amazing grace', displayOrder: 0 },
-    ]);
-    render(<App />);
-    await screen.findByText('John 3 (KJV)');
-
-    fireEvent.keyDown(window, { key: '2' });
-
-    expect(await screen.findByText(/Amazing grace/)).toBeInTheDocument();
-  });
-
   it('blanks the output on Escape and says so in the banner', async () => {
     render(<App />);
     await screen.findByText(/nothing live/i);
@@ -89,7 +73,6 @@ describe('App', () => {
     const input = await screen.findByPlaceholderText(/search/i);
     input.focus();
 
-    fireEvent.keyDown(input, { key: '2' });
     fireEvent.keyDown(input, { key: 'Escape' });
 
     expect(window.api.setOutputHidden).not.toHaveBeenCalled();
@@ -255,19 +238,22 @@ describe('App', () => {
     expect(window.api.setOutputHidden).not.toHaveBeenCalled();
   });
 
-  // R-05: a modifier held with a digit is some other shortcut (or none), never "jump to
-  // staged item N and leave Settings".
-  it('ignores number shortcuts with a modifier held', async () => {
-    (window.api.getStagedItems as any).mockResolvedValue([
-      { id: 1, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' },
-    ]);
+  // Esc must close the search popover rather than blank the screen, even when focus has
+  // landed on one of the popover's own buttons (e.g. after clicking a book) rather than
+  // staying on the search input itself.
+  it('closes the search popover on Escape instead of blanking, even with a popover button focused', async () => {
+    const book = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT' as const, sortOrder: 43 };
+    (window.api.findBibleBooks as any).mockResolvedValue([book]);
+
     render(<App />);
-    screen.getByRole('button', { name: /settings/i }).click();
-    await screen.findByText(/OBS Browser Source URLs/i);
+    const input = await screen.findByPlaceholderText(/search/i);
+    fireEvent.change(input, { target: { value: 'John' } });
+    const bookButton = await screen.findByText('John');
+    bookButton.focus();
+    fireEvent.keyDown(bookButton, { key: 'Escape' });
 
-    fireEvent.keyDown(window, { key: '1', ctrlKey: true });
-
-    expect(screen.getByText(/OBS Browser Source URLs/i)).toBeInTheDocument();
+    expect(window.api.setOutputHidden).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText('John')).not.toBeInTheDocument());
   });
 
   // R-14: the content-search highlight is a one-shot "look here", not a permanent marker

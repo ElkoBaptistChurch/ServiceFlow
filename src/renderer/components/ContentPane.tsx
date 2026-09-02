@@ -194,9 +194,6 @@ export default function ContentPane({
         <span>
           <strong>Up / Down</strong> moves a verse
         </span>
-        <span>
-          <strong>1–9, 0</strong> jumps between today&#8217;s items
-        </span>
         <div className="content-pane__footer-spacer" />
         <span className="obs-status">
           <span className="dot" />

@@ -31,6 +31,12 @@ export default function App() {
   // renders its results as a popover over the service list, so App only needs to know
   // whether that popover is open to dim the list behind it.
   const [searchOpen, setSearchOpen] = useState(false);
+  // Set by SearchPanel so Escape can close its popover even when focus has landed on one
+  // of the popover's own buttons rather than the search input itself.
+  const closeSearchRef = useRef<() => void>(() => {});
+  const registerCloseSearch = useCallback((close: () => void) => {
+    closeSearchRef.current = close;
+  }, []);
 
   const refreshStagedItems = useCallback(() => {
     return window.api.getStagedItems().then((loaded) => {
@@ -159,22 +165,19 @@ export default function App() {
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        toggleHidden();
-        return;
-      }
-
-      if (noModifier && /^[0-9]$/.test(e.key)) {
-        // The sidebar holds 10 items, badged 1-9 then 0 for the tenth.
-        const index = e.key === '0' ? 9 : Number(e.key) - 1;
-        if (items[index]) {
-          setView('operate');
-          selectActive(items[index]);
+        // The search popover takes priority: closing it is what the operator expects when
+        // they've just clicked a book/chapter button, not a screen blank.
+        if (searchOpen) {
+          closeSearchRef.current();
+        } else {
+          toggleHidden();
         }
+        return;
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [items, toggleHidden]);
+  }, [searchOpen, toggleHidden]);
 
   return (
     <div className="app">
@@ -248,7 +251,12 @@ export default function App() {
       ) : (
         <div className="app-body">
           <div className="sidebar">
-            <SearchPanel translation={translation} onStaged={handleStaged} onOpenChange={setSearchOpen} />
+            <SearchPanel
+              translation={translation}
+              onStaged={handleStaged}
+              onOpenChange={setSearchOpen}
+              registerClose={registerCloseSearch}
+            />
             <div className="service-header">
               <span className="service-header__label">Ready for today</span>
               <span className="service-header__count">{items.length} items</span>
