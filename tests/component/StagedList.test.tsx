@@ -36,6 +36,15 @@ describe('StagedList', () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  // The live card is marked with a LIVE tag instead of a remove button (IMPLEMENTATION.md:
+  // the live card must not change height, and it must stay identifiable at a glance).
+  it('marks the live item with a LIVE tag instead of a remove button', () => {
+    render(<StagedList items={items} activeItemId={null} liveStagedItemId={1} onSelectActive={vi.fn()} onChanged={vi.fn()} />);
+    expect(screen.getByText('LIVE')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /remove john 3/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remove amazing grace/i })).toBeInTheDocument();
+  });
+
   // R-02: the operator must be able to see which item they're browsing, not just which
   // one is live -- today nothing lights up until a verse actually goes live.
   it('marks the active item as pressed', () => {

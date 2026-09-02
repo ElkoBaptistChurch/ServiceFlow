@@ -1,0 +1,227 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; }
+    a { color: #6fb6ff; } a:hover { color: #a3d1ff; }
+    @keyframes sfpulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #0d1014; color: #e7ecf1; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Header -->
+  <div style="display: flex; align-items: center; gap: 24px; height: 68px; flex-shrink: 0; padding: 0 20px; background: #12161b; border-bottom: 1px solid #222a32;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e8402f" stroke-width="2" stroke-linecap="round"><path d="M5 12h4l2-6 3 12 2-6h3"/></svg>
+      <span style="font-size: 15px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;">ServiceFlow</span>
+    </div>
+    <div style="display: flex; gap: 2px; background: #0d1014; padding: 3px; border-radius: 7px; border: 1px solid #222a32;">
+      <div style="padding: 7px 16px; border-radius: 5px; background: #232c35; font-size: 13px; font-weight: 600;">Operate</div>
+      <div style="padding: 7px 16px; border-radius: 5px; color: #7f8b96; font-size: 13px; font-weight: 500;">Settings</div>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <!-- Live readout -->
+    <div style="display: flex; align-items: center; gap: 14px; padding: 8px 8px 8px 16px; border-radius: 9px; background: #1e0f0d; border: 1px solid #5c2018;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 9px; height: 9px; border-radius: 50%; background: #e8402f; animation: sfpulse 1.8s ease-in-out infinite;"></div>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: .18em; color: #ff6b5c;">ON AIR</span>
+      </div>
+      <span style="font-size: 17px; font-weight: 600; letter-spacing: -.01em;">John 3:16</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8a6560; padding: 3px 7px; border-radius: 4px; background: #2a1512;">KJV</span>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 6px; background: #2b1310; border: 1px solid #6b2a20; color: #ffb3a8; font-size: 12px; font-weight: 600;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 5.1A9.9 9.9 0 0112 5c5 0 9 4.5 10 7-.5 1.2-1.5 2.8-3 4.2M6.5 6.6C4.4 8 3 10.2 2 12c1 2.5 5 7 10 7 1.7 0 3.2-.5 4.5-1.2"/></svg>
+        Blank output <span style="font-family: 'IBM Plex Mono', monospace; opacity: .6;">ESC</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div style="display: flex; flex-grow: 1; min-height: 0;">
+
+    <!-- Library -->
+    <div style="width: 336px; flex-shrink: 0; display: flex; flex-direction: column; background: #12161b; border-right: 1px solid #222a32;">
+      <div style="padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: .16em; color: #6d7a86;">LIBRARY</span>
+        </div>
+        <div style="display: flex; gap: 2px; background: #0d1014; padding: 3px; border-radius: 7px; border: 1px solid #222a32;">
+          <div style="flex-grow: 1; text-align: center; padding: 8px; border-radius: 5px; background: #2f3b47; font-size: 13px; font-weight: 600;">Bible</div>
+          <div style="flex-grow: 1; text-align: center; padding: 8px; border-radius: 5px; color: #7f8b96; font-size: 13px; font-weight: 500;">Songs</div>
+        </div>
+        <div style="display: flex; gap: 18px; padding: 0 2px;">
+          <div style="font-size: 12px; font-weight: 600; color: #e7ecf1; padding-bottom: 6px; border-bottom: 2px solid #e8402f;">Browse</div>
+          <div style="font-size: 12px; font-weight: 500; color: #6d7a86; padding-bottom: 6px; border-bottom: 2px solid transparent;">Search text</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 7px; background: #0d1014; border: 1px solid #2f3b47;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6d7a86" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <span style="font-size: 13px; color: #e7ecf1;">john</span>
+          <div style="flex-grow: 1;"></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4f5c68; border: 1px solid #2f3b47; border-radius: 4px; padding: 2px 5px;">/</span>
+        </div>
+      </div>
+      <div style="flex-grow: 1; min-height: 0; overflow: hidden; padding: 0 10px 10px; display: flex; flex-direction: column; gap: 1px;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 6px; background: #1c242c;">
+          <span style="font-size: 14px; font-weight: 600; flex-grow: 1;">John</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #6d7a86;">21 ch</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6d7a86" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; padding: 10px 4px 14px;">
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">1</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">2</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #e8402f; border: 1px solid #e8402f; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: #fff;">3</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">4</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">5</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">6</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">7</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">8</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">9</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">10</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">11</div>
+          <div style="text-align: center; padding: 9px 0; border-radius: 5px; background: #0d1014; border: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a8b4bf;">12</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 6px;">
+          <span style="font-size: 14px; color: #a8b4bf; flex-grow: 1;">1 John</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #4f5c68;">5 ch</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 6px;">
+          <span style="font-size: 14px; color: #a8b4bf; flex-grow: 1;">2 John</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #4f5c68;">1 ch</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 6px;">
+          <span style="font-size: 14px; color: #a8b4bf; flex-grow: 1;">3 John</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #4f5c68;">1 ch</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Service / staged -->
+    <div style="width: 292px; flex-shrink: 0; display: flex; flex-direction: column; background: #10141a; border-right: 1px solid #222a32;">
+      <div style="padding: 16px 16px 10px; display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: .16em; color: #6d7a86;">SERVICE</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #4f5c68;">4 staged</span>
+      </div>
+      <div style="flex-grow: 1; min-height: 0; padding: 0 10px; display: flex; flex-direction: column; gap: 5px;">
+
+        <div style="display: flex; align-items: stretch; gap: 0; border-radius: 7px; background: #1c242c; border: 1px solid #2f3b47; overflow: hidden;">
+          <div style="width: 3px; background: #e8402f;"></div>
+          <div style="flex-grow: 1; padding: 12px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: #ff6b5c; letter-spacing: .1em;">BIBLE</span>
+              <div style="flex-grow: 1;"></div>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #6d7a86; border: 1px solid #2f3b47; border-radius: 4px; padding: 1px 6px;">1</span>
+            </div>
+            <span style="font-size: 14px; font-weight: 600;">John 3</span>
+            <span style="font-size: 12px; color: #7f8b96;">36 verses · KJV</span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: stretch; border-radius: 7px; background: #12171d; border: 1px solid #1e262e; overflow: hidden;">
+          <div style="width: 3px; background: #2f3b47;"></div>
+          <div style="flex-grow: 1; padding: 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: #6d7a86; letter-spacing: .1em;">SONG</span>
+              <div style="flex-grow: 1;"></div>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #4f5c68; border: 1px solid #232c35; border-radius: 4px; padding: 1px 6px;">2</span>
+            </div>
+            <span style="font-size: 14px; font-weight: 500; color: #cfd8e0;">Amazing Grace</span>
+            <span style="font-size: 12px; color: #5c6874;">4 verses</span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: stretch; border-radius: 7px; background: #12171d; border: 1px solid #1e262e; overflow: hidden;">
+          <div style="width: 3px; background: #2f3b47;"></div>
+          <div style="flex-grow: 1; padding: 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: #6d7a86; letter-spacing: .1em;">BIBLE</span>
+              <div style="flex-grow: 1;"></div>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #4f5c68; border: 1px solid #232c35; border-radius: 4px; padding: 1px 6px;">3</span>
+            </div>
+            <span style="font-size: 14px; font-weight: 500; color: #cfd8e0;">Psalm 23</span>
+            <span style="font-size: 12px; color: #5c6874;">6 verses · KJV</span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: stretch; border-radius: 7px; background: #12171d; border: 1px solid #1e262e; overflow: hidden;">
+          <div style="width: 3px; background: #2f3b47;"></div>
+          <div style="flex-grow: 1; padding: 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: #6d7a86; letter-spacing: .1em;">SONG</span>
+              <div style="flex-grow: 1;"></div>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #4f5c68; border: 1px solid #232c35; border-radius: 4px; padding: 1px 6px;">4</span>
+            </div>
+            <span style="font-size: 14px; font-weight: 500; color: #cfd8e0;">How Great Thou Art</span>
+            <span style="font-size: 12px; color: #5c6874;">4 verses</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: #0d1014;">
+      <div style="display: flex; align-items: baseline; gap: 12px; padding: 18px 24px 14px; border-bottom: 1px solid #1a2128;">
+        <span style="font-size: 20px; font-weight: 600; letter-spacing: -.01em;">John 3</span>
+        <span style="font-size: 13px; color: #6d7a86;">King James Version</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5c6874;">&#8593;&#8595; to advance</span>
+      </div>
+      <div style="flex-grow: 1; min-height: 0; overflow: hidden; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px;">
+
+        <div style="display: flex; gap: 16px; padding: 14px 16px; border-radius: 8px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4f5c68; width: 26px; flex-shrink: 0; text-align: right;">14</span>
+          <span style="font-size: 15px; line-height: 1.55; color: #8a959f; text-wrap: pretty;">And as Moses lifted up the serpent in the wilderness, even so must the Son of man be lifted up:</span>
+        </div>
+
+        <div style="display: flex; gap: 16px; padding: 14px 16px; border-radius: 8px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4f5c68; width: 26px; flex-shrink: 0; text-align: right;">15</span>
+          <span style="font-size: 15px; line-height: 1.55; color: #8a959f; text-wrap: pretty;">That whosoever believeth in him should not perish, but have eternal life.</span>
+        </div>
+
+        <div style="display: flex; gap: 16px; padding: 18px 16px; border-radius: 8px; background: #1e0f0d; border: 1px solid #6b2a20; position: relative;">
+          <div style="position: absolute; left: -16px; top: 20px; width: 4px; height: 40px; border-radius: 2px; background: #e8402f;"></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: #ff6b5c; width: 26px; flex-shrink: 0; text-align: right;">16</span>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <span style="font-size: 19px; line-height: 1.5; color: #ffffff; font-weight: 500; text-wrap: pretty;">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</span>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .18em; color: #ff6b5c;">&#9679; CURRENTLY ON AIR</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 16px; padding: 14px 16px; border-radius: 8px; background: #141a20; border: 1px solid #232c35;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #8a959f; width: 26px; flex-shrink: 0; text-align: right;">17</span>
+          <span style="font-size: 15px; line-height: 1.55; color: #cfd8e0; text-wrap: pretty;">For God sent not his Son into the world to condemn the world; but that the world through him might be saved.</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5c6874; letter-spacing: .12em; align-self: center; flex-shrink: 0;">NEXT &#8595;</span>
+        </div>
+
+        <div style="display: flex; gap: 16px; padding: 14px 16px; border-radius: 8px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4f5c68; width: 26px; flex-shrink: 0; text-align: right;">18</span>
+          <span style="font-size: 15px; line-height: 1.55; color: #8a959f; text-wrap: pretty;">He that believeth on him is not condemned: but he that believeth not is condemned already, because he hath not believed in the name of the only begotten Son of God.</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer shortcut rail -->
+  <div style="display: flex; align-items: center; gap: 26px; height: 40px; flex-shrink: 0; padding: 0 20px; background: #12161b; border-top: 1px solid #222a32; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5c6874;">
+    <span><span style="color: #8a959f;">ESC</span> blank output</span>
+    <span><span style="color: #8a959f;">&#8593;&#8595;</span> previous / next</span>
+    <span><span style="color: #8a959f;">1&#8211;9</span> jump to staged item</span>
+    <span><span style="color: #8a959f;">/</span> search</span>
+    <div style="flex-grow: 1;"></div>
+    <span style="display: flex; align-items: center; gap: 7px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #3fb950;"></span>OBS connected &#183; 1 browser source</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

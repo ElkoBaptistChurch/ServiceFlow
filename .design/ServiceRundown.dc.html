@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Public Sans', 'Segoe UI', system-ui, sans-serif; }
+    a { color: #3d6bd6; } a:hover { color: #6a90e5; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #f4f5f7; color: #191c21; display: flex; overflow: hidden;">
+
+  <!-- The run of show is the spine of the app -->
+  <div style="width: 400px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #dfe2e7; display: flex; flex-direction: column;">
+    <div style="padding: 24px 24px 18px; display: flex; flex-direction: column; gap: 5px; border-bottom: 1px solid #eceef1;">
+      <span style="font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #8b93a0;">Run of show</span>
+      <span style="font-family: 'Newsreader', Georgia, serif; font-size: 24px; font-weight: 600; letter-spacing: -.01em;">Sunday, 31 August</span>
+      <span style="font-size: 13px; color: #6b7382;">4 items staged &#183; started 10:02</span>
+    </div>
+
+    <div style="flex-grow: 1; min-height: 0; padding: 16px 20px; display: flex; flex-direction: column;">
+
+      <!-- item 1: done -->
+      <div style="display: flex; gap: 16px;">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 22px; flex-shrink: 0;">
+          <div style="width: 11px; height: 11px; border-radius: 50%; background: #b7bec9; margin-top: 15px;"></div>
+          <div style="flex-grow: 1; width: 2px; background: #e3e6ea;"></div>
+        </div>
+        <div style="flex-grow: 1; padding: 10px 0 18px; display: flex; flex-direction: column; gap: 3px;">
+          <span style="font-size: 15px; font-weight: 600; color: #6b7382;">How Great Thou Art</span>
+          <span style="font-size: 12px; color: #9aa2af;">Song &#183; finished 10:11</span>
+        </div>
+      </div>
+
+      <!-- item 2: live -->
+      <div style="display: flex; gap: 16px;">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 22px; flex-shrink: 0;">
+          <div style="width: 15px; height: 15px; border-radius: 50%; background: #d93025; box-shadow: 0 0 0 4px rgba(217,48,37,.16); margin-top: 16px;"></div>
+          <div style="flex-grow: 1; width: 2px; background: #e3e6ea;"></div>
+        </div>
+        <div style="flex-grow: 1; padding: 0 0 18px;">
+          <div style="border-radius: 12px; background: #ffffff; border: 2px solid #d93025; box-shadow: 0 4px 16px rgba(217,48,37,.12); padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 9px;">
+              <span style="font-size: 10px; font-weight: 700; letter-spacing: .16em; color: #ffffff; background: #d93025; padding: 3px 8px; border-radius: 4px;">ON AIR</span>
+              <span style="font-size: 12px; color: #9aa2af;">2 min 14 sec</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 3px;">
+              <span style="font-family: 'Newsreader', Georgia, serif; font-size: 20px; font-weight: 600;">John 3</span>
+              <span style="font-size: 12px; color: #6b7382;">Bible reading &#183; King James Version</span>
+            </div>
+            <div style="height: 1px; background: #eceef1;"></div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #8b93a0;">Showing verse 16</span>
+              <span style="font-family: 'Newsreader', Georgia, serif; font-size: 14px; line-height: 1.5; color: #3d434d; text-wrap: pretty;">For God so loved the world, that he gave his only begotten Son&#8230;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- item 3 -->
+      <div style="display: flex; gap: 16px;">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 22px; flex-shrink: 0;">
+          <div style="width: 11px; height: 11px; border: 2px solid #b7bec9; box-sizing: border-box; border-radius: 50%; background: #fff; margin-top: 15px;"></div>
+          <div style="flex-grow: 1; width: 2px; background: #e3e6ea;"></div>
+        </div>
+        <div style="flex-grow: 1; padding: 10px 0 18px; display: flex; align-items: center; gap: 10px;">
+          <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+            <span style="font-size: 15px; font-weight: 600;">Amazing Grace</span>
+            <span style="font-size: 12px; color: #9aa2af;">Song &#183; 4 verses</span>
+          </div>
+          <span style="font-size: 11px; font-weight: 700; color: #8b93a0; border: 1px solid #dfe2e7; border-radius: 4px; padding: 3px 8px;">UP NEXT</span>
+        </div>
+      </div>
+
+      <!-- item 4 -->
+      <div style="display: flex; gap: 16px;">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 22px; flex-shrink: 0;">
+          <div style="width: 11px; height: 11px; border: 2px solid #b7bec9; box-sizing: border-box; border-radius: 50%; background: #fff; margin-top: 15px;"></div>
+        </div>
+        <div style="flex-grow: 1; padding: 10px 0 18px; display: flex; flex-direction: column; gap: 3px;">
+          <span style="font-size: 15px; font-weight: 600;">Psalm 23</span>
+          <span style="font-size: 12px; color: #9aa2af;">Bible reading &#183; 6 verses</span>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-radius: 9px; border: 1.5px dashed #cbd1d9; color: #8b93a0; font-size: 14px; font-weight: 600; margin-left: 38px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Add to the run of show
+      </div>
+    </div>
+
+    <div style="padding: 16px 24px; border-top: 1px solid #eceef1; display: flex; align-items: center; gap: 10px;">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #1e8e4e;"></span>
+      <span style="font-size: 12px; color: #6b7382;">OBS browser source connected</span>
+      <div style="flex-grow: 1;"></div>
+      <span style="font-size: 12px; font-weight: 600; color: #3d6bd6;">Settings</span>
+    </div>
+  </div>
+
+  <!-- Right: the live item, expanded -->
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
+
+    <div style="display: flex; align-items: center; gap: 14px; padding: 20px 32px; background: #ffffff; border-bottom: 1px solid #dfe2e7;">
+      <div style="display: flex; align-items: center; gap: 11px; padding: 9px 16px; border-radius: 999px; background: #fdeceb; border: 1px solid #f5c2be;">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #d93025;"></span>
+        <span style="font-size: 13px; font-weight: 700; color: #a3241b;">Live &#183; John 3:16</span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 8px; background: #191c21; color: #fff; font-size: 14px; font-weight: 600;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 5.1A9.9 9.9 0 0112 5c5 0 9 4.5 10 7-.5 1.2-1.5 2.8-3 4.2M6.5 6.6C4.4 8 3 10.2 2 12c1 2.5 5 7 10 7 1.7 0 3.2-.5 4.5-1.2"/></svg>
+        Blank output <span style="opacity: .55; font-weight: 500;">Esc</span>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 12px; padding: 18px 32px 14px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 11px 15px; border-radius: 9px; background: #ffffff; border: 1px solid #dfe2e7; flex-grow: 1; max-width: 400px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b93a0" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span style="font-size: 14px; color: #8b93a0;">Search verses, songs or lyrics</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 11px; font-weight: 600; color: #b7bec9; border: 1px solid #e3e6ea; border-radius: 4px; padding: 2px 6px;">/</span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <span style="font-family: 'Newsreader', Georgia, serif; font-size: 22px; font-weight: 600;">John 3</span>
+      <span style="font-size: 13px; color: #8b93a0;">King James Version</span>
+    </div>
+
+    <div style="flex-grow: 1; min-height: 0; padding: 4px 32px 24px; display: flex; flex-direction: column; gap: 8px;">
+
+      <div style="display: flex; gap: 18px; padding: 15px 20px; border-radius: 10px; background: #ffffff; border: 1px solid #e7eaee;">
+        <span style="font-size: 13px; font-weight: 700; color: #b7bec9; width: 26px; flex-shrink: 0; text-align: right;">14</span>
+        <span style="font-family: 'Newsreader', Georgia, serif; font-size: 17px; line-height: 1.55; color: #5b636f; text-wrap: pretty;">And as Moses lifted up the serpent in the wilderness, even so must the Son of man be lifted up:</span>
+      </div>
+
+      <div style="display: flex; gap: 18px; padding: 15px 20px; border-radius: 10px; background: #ffffff; border: 1px solid #e7eaee;">
+        <span style="font-size: 13px; font-weight: 700; color: #b7bec9; width: 26px; flex-shrink: 0; text-align: right;">15</span>
+        <span style="font-family: 'Newsreader', Georgia, serif; font-size: 17px; line-height: 1.55; color: #5b636f; text-wrap: pretty;">That whosoever believeth in him should not perish, but have eternal life.</span>
+      </div>
+
+      <div style="display: flex; gap: 18px; padding: 22px 20px; border-radius: 12px; background: #ffffff; border: 2px solid #d93025; box-shadow: 0 4px 20px rgba(217,48,37,.10);">
+        <span style="font-size: 13px; font-weight: 700; color: #d93025; width: 26px; flex-shrink: 0; text-align: right;">16</span>
+        <div style="display: flex; flex-direction: column; gap: 11px;">
+          <span style="font-family: 'Newsreader', Georgia, serif; font-size: 23px; line-height: 1.45; color: #191c21; text-wrap: pretty;">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</span>
+          <span style="font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #d93025;">On the stream now</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 18px; padding: 15px 20px; border-radius: 10px; background: #ffffff; border: 1px solid #cbd1d9;">
+        <span style="font-size: 13px; font-weight: 700; color: #6b7382; width: 26px; flex-shrink: 0; text-align: right;">17</span>
+        <span style="font-family: 'Newsreader', Georgia, serif; font-size: 17px; line-height: 1.55; color: #3d434d; text-wrap: pretty;">For God sent not his Son into the world to condemn the world; but that the world through him might be saved.</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 11px; font-weight: 700; color: #8b93a0; align-self: center; flex-shrink: 0;">NEXT &#8595;</span>
+      </div>
+
+      <div style="display: flex; gap: 18px; padding: 15px 20px; border-radius: 10px; background: #ffffff; border: 1px solid #e7eaee;">
+        <span style="font-size: 13px; font-weight: 700; color: #b7bec9; width: 26px; flex-shrink: 0; text-align: right;">18</span>
+        <span style="font-family: 'Newsreader', Georgia, serif; font-size: 17px; line-height: 1.55; color: #5b636f; text-wrap: pretty;">He that believeth on him is not condemned: but he that believeth not is condemned already, because he hath not believed in the name of the only begotten Son of God.</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

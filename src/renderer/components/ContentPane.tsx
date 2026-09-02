@@ -9,9 +9,19 @@ interface Props {
   /** Called once the pane has scrolled to `focusEntryId`, so App can clear the one-shot value. */
   onFocusHandled: () => void;
   onLive: () => void;
+  /** Shown next to the reference for bible items, e.g. "King James Version". Optional so
+   * standalone renders (tests) don't need to supply it. */
+  translation?: string;
 }
 
-export default function ContentPane({ activeItem, liveState, focusEntryId, onFocusHandled, onLive }: Props) {
+export default function ContentPane({
+  activeItem,
+  liveState,
+  focusEntryId,
+  onFocusHandled,
+  onLive,
+  translation,
+}: Props) {
   const [verses, setVerses] = useState<BibleVerse[]>([]);
   const [blocks, setBlocks] = useState<SongBlock[]>([]);
   const paneRef = useRef<HTMLUListElement>(null);
@@ -95,42 +105,104 @@ export default function ContentPane({ activeItem, liveState, focusEntryId, onFoc
     }
   }
 
-  if (!activeItem) return <div>No item selected</div>;
+  if (!activeItem) return <div className="content-pane__empty">No item selected</div>;
 
   const isLiveId = (id: number) => liveState.stagedItemId === activeItem.id && liveState.verseOrBlockId === id;
   const entries =
     activeItem.type === 'bible'
-      ? verses.map((v) => ({ id: v.id, text: `${v.verse}. ${v.text}` }))
-      : blocks.map((b) => ({ id: b.id, text: `${b.label}: ${b.text}` }));
+      ? verses.map((v) => ({ id: v.id, number: String(v.verse), text: v.text }))
+      : blocks.map((b) => ({ id: b.id, number: b.label, text: b.text }));
+
+  const liveIndex = entries.findIndex((entry) => isLiveId(entry.id));
+  // Labels are formatted as "John 3 (KJV)"; when the translation is shown separately in
+  // the header (below), strip the trailing "(KJV)" so it isn't printed twice.
+  const title =
+    activeItem.type === 'bible' && translation
+      ? activeItem.label.replace(/\s*\([^)]*\)\s*$/, '')
+      : activeItem.label;
 
   return (
-    <div>
+    <div className="content-pane">
+      <div className="content-pane__header">
+        <span className="content-pane__title">{title}</span>
+        {activeItem.type === 'bible' && translation && (
+          <span className="content-pane__translation">{translation}</span>
+        )}
+        <div className="header-spacer" />
+        <span className="content-pane__hint">Click a verse to put it on the stream</span>
+      </div>
       {/* LiveBanner already says this globally; the operator looking at THIS list, not the
           banner, needs the same fact right where they're clicking (R-12). Blanking stays
           sticky by design — this is feedback only, never an auto-unhide. */}
-      {liveState.hidden && <p role="status">Output is hidden — the selection below will not appear until it's shown again.</p>}
-      <ul ref={paneRef} role="list" aria-label="Content" tabIndex={0} onKeyDown={onKeyDown}>
-        {entries.map((entry) => (
-          <li key={entry.id}>
-            <button
-              data-entry-id={entry.id}
-              data-matched={focusEntryId === entry.id ? 'true' : undefined}
-              data-blanked={isLiveId(entry.id) && liveState.hidden ? 'true' : undefined}
-              aria-pressed={isLiveId(entry.id)}
-              // Same collapsed-line-break defect as O-01's output page: without this the
-              // operator's preview doesn't match what the congregation actually sees.
-              style={{ whiteSpace: 'pre-line' }}
-              onClick={(e) => {
-                // Keep focus in the pane so the arrow keys work immediately afterwards.
-                e.currentTarget.closest('ul')?.focus();
-                goLive(entry.id);
-              }}
-            >
-              {entry.text}
-            </button>
-          </li>
-        ))}
+      {liveState.hidden && (
+        <p role="status" className="content-pane__blanked-notice">
+          Output is hidden — the selection below will not appear until it's shown again.
+        </p>
+      )}
+      <ul ref={paneRef} className="content-pane__body" role="list" aria-label="Content" tabIndex={0} onKeyDown={onKeyDown}>
+        {entries.map((entry, index) => {
+          const live = isLiveId(entry.id);
+          const isNext = !live && liveIndex !== -1 && index === liveIndex + 1;
+          const isFocused = focusEntryId === entry.id;
+          const rowClass = [
+            'entry-row',
+            live ? 'entry-row--live' : '',
+            isNext ? 'entry-row--next' : '',
+            isFocused ? 'entry-row--focused' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <li key={entry.id} className={rowClass}>
+              <button
+                className="entry-row__btn"
+                data-entry-id={entry.id}
+                data-matched={isFocused ? 'true' : undefined}
+                data-blanked={live && liveState.hidden ? 'true' : undefined}
+                aria-pressed={live}
+                // Same collapsed-line-break defect as O-01's output page: without this the
+                // operator's preview doesn't match what the congregation actually sees.
+                style={{ whiteSpace: 'pre-line' }}
+                onClick={(e) => {
+                  // Keep focus in the pane so the arrow keys work immediately afterwards.
+                  e.currentTarget.closest('ul')?.focus();
+                  goLive(entry.id);
+                }}
+              >
+                <span className="entry-row__num">{entry.number}</span>
+                {live ? (
+                  <span className="entry-row__live-column">
+                    <span className="entry-row__text">{entry.text}</span>
+                    <span className="entry-row__live-label">
+                      <span className="dot" />
+                      On the stream now
+                    </span>
+                  </span>
+                ) : (
+                  <span className="entry-row__text">{entry.text}</span>
+                )}
+                {isNext && <span className="entry-row__next-label">Next</span>}
+              </button>
+            </li>
+          );
+        })}
       </ul>
+      <div className="content-pane__footer">
+        <span>
+          <strong>Esc</strong> blanks the screen
+        </span>
+        <span>
+          <strong>Up / Down</strong> moves a verse
+        </span>
+        <span>
+          <strong>1–9, 0</strong> jumps between today&#8217;s items
+        </span>
+        <div className="content-pane__footer-spacer" />
+        <span className="obs-status">
+          <span className="dot" />
+          OBS connected
+        </span>
+      </div>
     </div>
   );
 }

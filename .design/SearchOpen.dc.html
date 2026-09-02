@@ -1,0 +1,290 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Source+Sans+3:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif; }
+    a { color: #8a5a2b; } a:hover { color: #6b4420; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #faf7f2; color: #2c2823; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Header -->
+  <div style="display: flex; align-items: center; gap: 28px; height: 76px; flex-shrink: 0; padding: 0 32px; background: #ffffff; border-bottom: 1px solid #e7e0d5;">
+    <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 21px; font-weight: 700; letter-spacing: -.015em;">ServiceFlow</span>
+    <div style="display: flex; gap: 24px;">
+      <span style="font-size: 15px; font-weight: 600; color: #2c2823; padding: 27px 0; border-bottom: 3px solid #8a5a2b;">Operate</span>
+      <span style="font-size: 15px; font-weight: 500; color: #8b8377; padding: 27px 0; border-bottom: 3px solid transparent;">Settings</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 11px; padding: 10px 18px; border-radius: 999px; background: #f3ede2; border: 1px solid #ddd2c0;">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #2f7d4f;"></span>
+        <span style="font-size: 13px; font-weight: 600; color: #45403a;">Showing on stream</span>
+        <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600;">John 3:16</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 11px 20px; border-radius: 8px; background: #2c2823; color: #faf7f2; font-size: 14px; font-weight: 600;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 5.1A9.9 9.9 0 0112 5c5 0 9 4.5 10 7-.5 1.2-1.5 2.8-3 4.2M6.5 6.6C4.4 8 3 10.2 2 12c1 2.5 5 7 10 7 1.7 0 3.2-.5 4.5-1.2"/></svg>
+        Blank the screen
+      </div>
+      <div style="width: 1px; height: 28px; background: #ddd2c0;"></div>
+      <div role="group" aria-label="Appearance" style="display: flex; gap: 2px; padding: 3px; border-radius: 999px; border: 1px solid #ddd2c0;">
+        <span aria-pressed="true" style="width: 30px; height: 26px; border-radius: 999px; background: #8a5a2b; display: flex; align-items: center; justify-content: center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#faf7f2" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.8v2.2M12 20v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M1.8 12h2.2M20 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg></span>
+        <span aria-pressed="false" style="width: 30px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9a8f7f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div style="display: flex; flex-grow: 1; min-height: 0; padding: 28px 32px 0; gap: 28px;">
+
+    <!-- Left: search + the service -->
+    <div style="width: 396px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; position: relative;">
+
+      <div style="display: flex; align-items: center; gap: 11px; height: 46px; box-sizing: border-box; padding: 0 15px; border-radius: 10px; background: #ffffff; border: 1px solid #ddd2c0; box-shadow: 0 1px 2px rgba(44,40,35,.04); flex-shrink: 0;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9a8f7f" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span style="font-size: 15px; color: #2c2823;">isai</span>
+        <span style="width: 1.5px; height: 19px; background: #8a5a2b;"></span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 12px; font-weight: 600; color: #b0a696;">3 matches</span>
+      </div>
+
+      <div style="height: 12px; flex-shrink: 0;"></div>
+
+      <div style="display: flex; align-items: center; gap: 8px; height: 32px; flex-shrink: 0;">
+        <span style="padding: 6px 15px; border-radius: 999px; background: #2c2823; color: #faf7f2; font-size: 13px; font-weight: 600;">Bible</span>
+        <span style="padding: 6px 15px; border-radius: 999px; background: #ffffff; border: 1px solid #ddd2c0; color: #6b6459; font-size: 13px; font-weight: 500;">Songs</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="padding: 6px 15px; border-radius: 999px; background: #f3ede2; color: #6b6459; font-size: 13px; font-weight: 500;">Search the words</span>
+      </div>
+
+      <div style="height: 22px; flex-shrink: 0;"></div>
+
+      <div style="display: flex; align-items: center; gap: 10px; height: 24px; flex-shrink: 0;">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: #9a8f7f;">Ready for today</span>
+        <span style="font-size: 13px; color: #b0a696;">10 items</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: #8a5a2b;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add
+        </span>
+      </div>
+
+      <div style="height: 12px; flex-shrink: 0;"></div>
+
+      <!-- Ten cards, no scrolling -->
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; opacity: .3;">
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">1</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">How Great Thou Art</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Song &#183; 4 verses</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">2</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Amazing Grace</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Song &#183; 4 verses</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">3</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Cornerstone</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Song &#183; 5 verses</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">4</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Psalm 100</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Reading &#183; 5 verses &#183; KJV</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+        <!-- live -->
+        <div style="display: flex; align-items: center; gap: 12px; padding: 9px 11px; border-radius: 9px; background: #f5efe4; border: 2px solid #8a5a2b; box-shadow: 0 2px 8px rgba(138,90,43,.10); flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #8a5a2b; color: #ffffff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">5</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 700; color: #2c2823; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">John 3</span>
+            <span style="font-size: 12px; color: #8a7a63;">Reading &#183; verse 16 of 36 &#183; KJV</span>
+          </div>
+          <span style="display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: .1em; color: #2f7d4f;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #2f7d4f;"></span>LIVE</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">6</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Isaiah 40</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Reading &#183; 31 verses &#183; KJV</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">7</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Romans 8</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Reading &#183; 39 verses &#183; KJV</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">8</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Ephesians 2</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Reading &#183; 22 verses &#183; KJV</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">9</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">10,000 Reasons</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Song &#183; 4 verses</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #ffffff; border: 1px solid #e7e0d5; flex-shrink: 0;">
+          <span style="width: 24px; height: 24px; border-radius: 6px; background: #f3ede2; color: #8b8377; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">0</span>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #45403a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Great Is Thy Faithfulness</span>
+            <span style="font-size: 12px; color: #9a8f7f;">Song &#183; 4 verses &#183; closing</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b9a6" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </div>
+
+      </div>
+
+      <!-- Results replace the browser: they float over the service list -->
+      <div style="position: absolute; left: 0; right: 0; top: 58px; border-radius: 12px; background: #ffffff; border: 1px solid #ddd2c0; box-shadow: 0 16px 44px rgba(44,40,35,.18); overflow: hidden; display: flex; flex-direction: column;">
+
+        <div style="display: flex; align-items: center; gap: 8px; padding: 13px 16px 10px;">
+          <span style="font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #9a8f7f;">Books</span>
+          <div style="flex-grow: 1;"></div>
+          <span style="padding: 4px 11px; border-radius: 999px; background: #2c2823; color: #faf7f2; font-size: 12px; font-weight: 600;">Bible</span>
+          <span style="padding: 4px 11px; border-radius: 999px; background: #f3ede2; color: #6b6459; font-size: 12px; font-weight: 500;">Songs</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 16px; background: #f5efe4; border-top: 1px solid #f0eae0; border-bottom: 1px solid #f0eae0;">
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; font-weight: 600; flex-grow: 1;"><span style="color: #8a5a2b;">Isai</span>ah</span>
+          <span style="font-size: 13px; color: #9a8f7f;">66 chapters</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 12px 16px 14px;">
+          <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">1</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">2</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">3</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">4</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">5</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">6</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">7</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">8</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">9</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">10</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">11</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">12</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">13</span>
+            <span style="text-align: center; padding: 8px 0; border-radius: 6px; background: #faf7f2; border: 1px solid #e7e0d5; font-size: 13px; color: #6b6459;">14</span>
+        </div>
+        <div style="padding: 0 16px 14px; font-size: 12px; color: #b0a696;">Showing 1&#8211;14 of 66 &#183; scroll for more</div>
+
+        <div style="display: flex; align-items: center; gap: 8px; padding: 11px 16px 9px; border-top: 1px solid #f0eae0; background: #faf7f2;">
+          <span style="font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #9a8f7f;">In the words</span>
+        </div>
+
+        <div style="display: flex; gap: 14px; padding: 11px 16px; background: #faf7f2;">
+          <span style="font-size: 12px; font-weight: 700; color: #8a5a2b; width: 66px; flex-shrink: 0;">Isaiah 40:31</span>
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 14px; line-height: 1.45; color: #6b6459; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">But they that wait upon the LORD shall renew their strength&#8230;</span>
+        </div>
+
+        <div style="display: flex; gap: 14px; padding: 11px 16px 14px; background: #faf7f2;">
+          <span style="font-size: 12px; font-weight: 700; color: #8a5a2b; width: 66px; flex-shrink: 0;">Isaiah 9:6</span>
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 14px; line-height: 1.45; color: #6b6459; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">For unto us a child is born, unto us a son is given&#8230;</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 18px; padding: 10px 16px; background: #f3ede2; border-top: 1px solid #e7e0d5; font-size: 12px; color: #9a8f7f;">
+          <span><strong style="color: #6b6459; font-weight: 700;">Enter</strong> adds it to today</span>
+          <span><strong style="color: #6b6459; font-weight: 700;">Esc</strong> closes</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: the reading -->
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: #ffffff; border: 1px solid #e7e0d5; border-bottom: none; border-radius: 14px 14px 0 0; overflow: hidden;">
+      <div style="display: flex; align-items: baseline; gap: 14px; padding: 24px 32px 20px; border-bottom: 1px solid #f0eae0; flex-shrink: 0;">
+        <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 26px; font-weight: 700; letter-spacing: -.02em;">John 3</span>
+        <span style="font-size: 14px; color: #9a8f7f;">King James Version</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 13px; color: #9a8f7f;">Click a verse to put it on the stream</span>
+      </div>
+      <div style="flex-grow: 1; min-height: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 6px;">
+
+        <div style="display: flex; gap: 18px; padding: 16px 20px; border-radius: 10px;">
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #b0a696; width: 28px; flex-shrink: 0; text-align: right;">14</span>
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; line-height: 1.6; color: #6b6459; text-wrap: pretty;">And as Moses lifted up the serpent in the wilderness, even so must the Son of man be lifted up:</span>
+        </div>
+
+        <div style="display: flex; gap: 18px; padding: 16px 20px; border-radius: 10px;">
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #b0a696; width: 28px; flex-shrink: 0; text-align: right;">15</span>
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; line-height: 1.6; color: #6b6459; text-wrap: pretty;">That whosoever believeth in him should not perish, but have eternal life.</span>
+        </div>
+
+        <div style="display: flex; gap: 18px; padding: 22px 20px; border-radius: 12px; background: #f5efe4; border: 1px solid #ddd2c0;">
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 700; color: #8a5a2b; width: 28px; flex-shrink: 0; text-align: right;">16</span>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; line-height: 1.5; color: #2c2823; text-wrap: pretty;">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</span>
+            <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #2f7d4f;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2f7d4f;"></span>On the stream now</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 18px; padding: 16px 20px; border-radius: 10px; background: #faf7f2;">
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #8b8377; width: 28px; flex-shrink: 0; text-align: right;">17</span>
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; line-height: 1.6; color: #45403a; text-wrap: pretty;">For God sent not his Son into the world to condemn the world; but that the world through him might be saved.</span>
+          <div style="flex-grow: 1;"></div>
+          <span style="font-size: 12px; font-weight: 600; color: #b0a696; align-self: center; flex-shrink: 0;">Next</span>
+        </div>
+
+        <div style="display: flex; gap: 18px; padding: 16px 20px; border-radius: 10px;">
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #b0a696; width: 28px; flex-shrink: 0; text-align: right;">18</span>
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; line-height: 1.6; color: #6b6459; text-wrap: pretty;">He that believeth on him is not condemned: but he that believeth not is condemned already, because he hath not believed in the name of the only begotten Son of God.</span>
+        </div>
+
+        <div style="display: flex; gap: 18px; padding: 16px 20px; border-radius: 10px;">
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 600; color: #b0a696; width: 28px; flex-shrink: 0; text-align: right;">19</span>
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; line-height: 1.6; color: #6b6459; text-wrap: pretty;">And this is the condemnation, that light is come into the world, and men loved darkness rather than light, because their deeds were evil.</span>
+        </div>
+
+      </div>
+      <div style="display: flex; align-items: center; gap: 24px; padding: 16px 32px; background: #faf7f2; border-top: 1px solid #f0eae0; font-size: 13px; color: #9a8f7f; flex-shrink: 0;">
+        <span><strong style="color: #6b6459; font-weight: 700;">Esc</strong> blanks the screen</span>
+        <span><strong style="color: #6b6459; font-weight: 700;">Up / Down</strong> moves a verse</span>
+        <span><strong style="color: #6b6459; font-weight: 700;">1&#8211;9, 0</strong> jumps between today&#8217;s items</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="display: flex; align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2f7d4f;"></span>OBS connected</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

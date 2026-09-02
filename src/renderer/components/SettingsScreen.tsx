@@ -96,40 +96,49 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
 
   function styleSection(contentType: ContentType, styles: OutputStyle[]) {
     return (
-      <div>
-        <h3>{contentType === 'bible' ? 'Bible style' : 'Song style'}</h3>
-        {styles.map((s) => (
-          <button
-            key={s.id}
-            aria-pressed={s.isActive}
-            aria-label={`${contentType} ${s.name}`}
-            onClick={() => chooseStyle(contentType, s.id)}
-          >
-            {s.name} {s.isActive ? '(active)' : ''}
-          </button>
-        ))}
-      </div>
+      <section className="settings-section">
+        <h3 className="settings-section__title">{contentType === 'bible' ? 'Bible style' : 'Song style'}</h3>
+        <div className="style-row">
+          {styles.map((s) => (
+            <button
+              key={s.id}
+              className="style-btn"
+              aria-pressed={s.isActive}
+              aria-label={`${contentType} ${s.name}`}
+              onClick={() => chooseStyle(contentType, s.id)}
+            >
+              {s.name} {s.isActive ? '(active)' : ''}
+            </button>
+          ))}
+        </div>
+      </section>
     );
   }
 
   return (
-    <div>
-      <h2>Settings</h2>
-      <section>
-        <h3>OBS Browser Source URLs</h3>
+    <div className="settings-page">
+      <h2 className="settings-page__title">Settings</h2>
+      <section className="settings-section">
+        <h3 className="settings-section__title">OBS Browser Source URLs</h3>
         {urls && (
-          <ul>
-            <li>
-              Same computer: <span>{urls.local}</span>{' '}
-              <button type="button" aria-label="Copy same-computer URL" onClick={() => copyUrl('local', urls.local)}>
+          <ul className="url-list">
+            <li className="url-row">
+              Same computer: <code>{urls.local}</code>
+              <button
+                type="button"
+                className="btn-pill"
+                aria-label="Copy same-computer URL"
+                onClick={() => copyUrl('local', urls.local)}
+              >
                 {justCopied === 'local' ? 'Copied!' : 'Copy'}
               </button>
             </li>
             {urls.lan && (
-              <li>
-                Same network (other computer): <span>{urls.lan}</span>{' '}
+              <li className="url-row">
+                Same network (other computer): <code>{urls.lan}</code>
                 <button
                   type="button"
+                  className="btn-pill"
                   aria-label="Copy same-network URL"
                   onClick={() => copyUrl('lan', urls.lan as string)}
                 >
@@ -140,23 +149,26 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
           </ul>
         )}
         {urlsFailed && (
-          <p>
+          <p className="settings-section__body">
             Could not load the server URLs.{' '}
-            <button type="button" aria-label="Refresh server URLs" onClick={loadServerUrls}>
+            <button type="button" className="btn-pill" aria-label="Refresh server URLs" onClick={loadServerUrls}>
               Refresh
             </button>
           </p>
         )}
-        <p>
+        <p className="settings-section__body">
           In OBS: Sources → + → Browser Source → paste one of the URLs above → set width/height to your stream
           resolution → check "Shutdown source when not visible" off.
         </p>
       </section>
-      <section>
-        <h3>Bible translation</h3>
-        <label htmlFor="translation-select">Bible translation</label>
+      <section className="settings-section">
+        <h3 className="settings-section__title">Bible translation</h3>
+        <label className="field-label" htmlFor="translation-select">
+          Bible translation
+        </label>
         <select
           id="translation-select"
+          className="field-select"
           value={translation}
           onChange={(e) => chooseTranslation(e.target.value)}
         >
@@ -175,18 +187,20 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
             </option>
           ))}
         </select>
-        {translations.length === 0 && <p>No translations imported yet.</p>}
+        {translations.length === 0 && <p className="settings-section__body">No translations imported yet.</p>}
       </section>
       {styleSection('bible', bibleStyles)}
       {styleSection('song', songStyles)}
-      <section>
-        <h3>Import from OpenLP</h3>
-        <p>Pick your OpenLP song database and any Bible translation files — ServiceFlow works out which is which.</p>
-        <button onClick={runImport} disabled={importing}>
+      <section className="settings-section">
+        <h3 className="settings-section__title">Import from OpenLP</h3>
+        <p className="settings-section__body">
+          Pick your OpenLP song database and any Bible translation files — ServiceFlow works out which is which.
+        </p>
+        <button className="btn-pill" onClick={runImport} disabled={importing}>
           {importing ? 'Importing…' : 'Import from OpenLP'}
         </button>
         {summary && (
-          <ul>
+          <ul className="import-summary">
             {summary.sources.map((s, i) => (
               <li key={i}>
                 {s.file} ({s.kind}

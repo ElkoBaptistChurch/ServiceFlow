@@ -58,6 +58,7 @@ function mockElectron(lockAcquired: boolean): ElectronMock {
 function mockMainProcessModules(
   opts: {
     openDatabaseImpl?: () => unknown;
+    theme?: 'light' | 'dark';
     /** Defaults to "just now" (fresh) so M-04's staleness check is opt-in per test. */
     liveStateUpdatedAt?: string;
     /** The value settingsRepo.getSetting returns for the last-bound-port key. */
@@ -74,6 +75,7 @@ function mockMainProcessModules(
   };
   const createServer = vi.fn(() => serverHandle);
   const registerIpcHandlers = vi.fn();
+  const getTheme = vi.fn(() => opts.theme ?? 'light');
   const getLiveState = vi.fn(() => ({
     stagedItemId: null,
     verseOrBlockId: null,
@@ -89,7 +91,7 @@ function mockMainProcessModules(
   vi.doMock('../../../src/main/db/client', () => ({ openDatabase }));
   vi.doMock('../../../src/main/db/outputStylesRepository', () => ({ seedDefaultOutputStyles }));
   vi.doMock('../../../src/main/db/liveStateRepository', () => ({ getLiveState, setOutputHidden }));
-  vi.doMock('../../../src/main/db/settingsRepository', () => ({ getSetting, setSetting }));
+  vi.doMock('../../../src/main/db/settingsRepository', () => ({ getSetting, setSetting, getTheme }));
   vi.doMock('../../../src/main/server/server', () => ({ createServer }));
   vi.doMock('../../../src/main/ipc/handlers', () => ({ registerIpcHandlers }));
 
@@ -99,6 +101,7 @@ function mockMainProcessModules(
     createServer,
     serverHandle,
     registerIpcHandlers,
+    getTheme,
     getLiveState,
     setOutputHidden,
     getSetting,
@@ -147,6 +150,39 @@ describe('main/index.ts startup orchestration', () => {
 
     expect(electron.browserWindowInstance.restore).toHaveBeenCalled();
     expect(electron.browserWindowInstance.focus).toHaveBeenCalled();
+  });
+
+  // Theme persistence: the operator works in a darkened A/V booth, so a dark-themed
+  // window must never flash white on launch. The stored theme has to be read and
+  // turned into the window's backgroundColor at construction time -- not fetched by
+  // the renderer after the window is already visible.
+  it('reads the persisted theme before constructing the window and uses it for backgroundColor (dark)', async () => {
+    const electron = mockElectron(true);
+    const modules = mockMainProcessModules({ theme: 'dark' });
+
+    await import('../../../src/main/index');
+
+    await vi.waitFor(() => {
+      expect(electron.BrowserWindow).toHaveBeenCalled();
+    });
+
+    expect(modules.getTheme).toHaveBeenCalled();
+    const constructorArgs = electron.BrowserWindow.mock.calls[0][0];
+    expect(constructorArgs.backgroundColor).toBe('#17140f');
+  });
+
+  it('uses the light background color when the persisted theme is light', async () => {
+    const electron = mockElectron(true);
+    mockMainProcessModules({ theme: 'light' });
+
+    await import('../../../src/main/index');
+
+    await vi.waitFor(() => {
+      expect(electron.BrowserWindow).toHaveBeenCalled();
+    });
+
+    const constructorArgs = electron.BrowserWindow.mock.calls[0][0];
+    expect(constructorArgs.backgroundColor).toBe('#faf7f2');
   });
 
   // I3: a throw anywhere on the startup path (corrupt DB, read-only userData, an ABI

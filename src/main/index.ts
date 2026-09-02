@@ -18,6 +18,11 @@ const SETTING_LAST_PORT = 'last_bound_port';
 // hiccup while guaranteeing next Sunday always starts blank.
 const STALE_LIVE_STATE_MS = 4 * 60 * 60 * 1000;
 
+// Kept in sync with the --bg token in .design/IMPLEMENTATION.md. Read at window
+// construction time (not fetched by the renderer after first paint) so a dark-mode
+// operator in a darkened A/V booth never sees a white flash on launch.
+const THEME_BACKGROUND_COLOR = { light: '#faf7f2', dark: '#17140f' } as const;
+
 let mainWindowRef: BrowserWindow | null = null;
 // Set when 'second-instance' fires before mainWindowRef exists (a volunteer double-clicking
 // the shortcut while the first launch is still starting up) so the focus isn't dropped.
@@ -105,11 +110,21 @@ async function createWindow() {
   // Persist whatever port actually bound so next launch tries it first.
   settingsRepo.setSetting(db, SETTING_LAST_PORT, String(port));
 
+  const theme = settingsRepo.getTheme(db);
   const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    // The operate screen is designed at 1440x900: the staged-items sidebar fits a full
+    // ten-item service without scrolling only at 900px of window height. At the previous
+    // 1280x800 default it scrolled from the eighth item on, which is exactly the point in
+    // a service where the operator is least able to go hunting for the next item.
+    width: 1440,
+    height: 900,
+    backgroundColor: THEME_BACKGROUND_COLOR[theme],
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // Handed over synchronously so the renderer can set data-theme before React's first
+      // paint. backgroundColor above keeps the WINDOW from flashing white; without this the
+      // window is right but the UI inside it still paints light and then snaps to dark.
+      additionalArguments: [`--serviceflow-theme=${theme}`],
       contextIsolation: true,
       nodeIntegration: false,
     },

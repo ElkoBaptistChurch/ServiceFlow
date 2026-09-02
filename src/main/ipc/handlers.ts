@@ -13,7 +13,7 @@ import { importOpenlpSongs } from '../import/openlpSongsImporter';
 import { importOpenlpBible } from '../import/openlpBibleImporter';
 import { detectOpenlpFile } from '../import/detectOpenlpFile';
 import { ServerHandle } from '../server/server';
-import { ContentType, ImportSourceSummary, ImportSummary, LiveState, StagedItemType } from '../../shared/types';
+import { ContentType, ImportSourceSummary, ImportSummary, LiveState, StagedItemType, Theme } from '../../shared/types';
 
 /** Single funnel for every live-state change: persist, push to OBS, push to the UI. */
 function publishLiveState(
@@ -218,6 +218,10 @@ export function registerIpcHandlers(
   );
   ipcMain.handle(IpcChannels.SetActiveTranslation, (_e, translation: string) =>
     settingsRepo.setSetting(db, settingsRepo.SETTING_TRANSLATION, translation)
+  );
+  ipcMain.handle(IpcChannels.GetTheme, () => settingsRepo.getTheme(db));
+  ipcMain.handle(IpcChannels.SetTheme, (_e, theme: Theme) =>
+    settingsRepo.setSetting(db, settingsRepo.SETTING_THEME, theme)
   );
   ipcMain.handle(IpcChannels.FindBibleBooks, (_e, query: string, translation: string) =>
     bibleRepo.findBooksByName(db, query, translation)

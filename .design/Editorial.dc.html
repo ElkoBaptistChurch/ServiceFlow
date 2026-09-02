@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Work+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Work Sans', 'Segoe UI', system-ui, sans-serif; }
+    a { color: #9c3d2e; } a:hover { color: #7a2f24; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #f6f3ec; color: #16150f; display: flex; overflow: hidden;">
+
+  <!-- Left margin column: the whole service, set like a contents page -->
+  <div style="width: 372px; flex-shrink: 0; border-right: 1px solid #16150f; display: flex; flex-direction: column; padding: 34px 30px; box-sizing: border-box;">
+
+    <div style="display: flex; flex-direction: column; gap: 3px; padding-bottom: 28px;">
+      <span style="font-family: 'Spectral', Georgia, serif; font-size: 27px; font-weight: 700; letter-spacing: -.025em;">ServiceFlow</span>
+      <span style="font-size: 10px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #8a8578;">Sunday morning &#183; 31 Aug</span>
+    </div>
+
+    <div style="height: 3px; background: #16150f; margin-bottom: 22px;"></div>
+
+    <div style="display: flex; flex-direction: column; gap: 0;">
+
+      <div style="display: flex; gap: 16px; padding: 15px 0; border-bottom: 1px solid #ddd8cb;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 30px; font-weight: 300; color: #9c3d2e; line-height: 1; width: 34px; flex-shrink: 0;">01</span>
+        <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+          <span style="font-family: 'Spectral', Georgia, serif; font-size: 20px; font-weight: 600; letter-spacing: -.015em;">John 3</span>
+          <span style="font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #9c3d2e;">Reading &#183; on air</span>
+        </div>
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #9c3d2e; margin-top: 9px; flex-shrink: 0;"></span>
+      </div>
+
+      <div style="display: flex; gap: 16px; padding: 15px 0; border-bottom: 1px solid #ddd8cb;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 30px; font-weight: 300; color: #b8b2a3; line-height: 1; width: 34px; flex-shrink: 0;">02</span>
+        <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+          <span style="font-family: 'Spectral', Georgia, serif; font-size: 20px; font-weight: 400; letter-spacing: -.015em; color: #3b3830;">Amazing Grace</span>
+          <span style="font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #8a8578;">Hymn &#183; four verses</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 16px; padding: 15px 0; border-bottom: 1px solid #ddd8cb;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 30px; font-weight: 300; color: #b8b2a3; line-height: 1; width: 34px; flex-shrink: 0;">03</span>
+        <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+          <span style="font-family: 'Spectral', Georgia, serif; font-size: 20px; font-weight: 400; letter-spacing: -.015em; color: #3b3830;">Psalm 23</span>
+          <span style="font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #8a8578;">Reading &#183; six verses</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 16px; padding: 15px 0; border-bottom: 1px solid #ddd8cb;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 30px; font-weight: 300; color: #b8b2a3; line-height: 1; width: 34px; flex-shrink: 0;">04</span>
+        <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+          <span style="font-family: 'Spectral', Georgia, serif; font-size: 20px; font-weight: 400; letter-spacing: -.015em; color: #3b3830;">How Great Thou Art</span>
+          <span style="font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #8a8578;">Hymn &#183; four verses</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0; border-top: 1px solid #16150f;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8a8578" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <span style="font-size: 14px; color: #8a8578;">Search scripture &amp; hymns</span>
+      <div style="flex-grow: 1;"></div>
+      <span style="font-size: 11px; color: #b8b2a3;">/</span>
+    </div>
+  </div>
+
+  <!-- Main: the passage, set as a page, with the live verse as the drop-cap moment -->
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
+
+    <div style="display: flex; align-items: flex-end; gap: 20px; padding: 34px 48px 22px; border-bottom: 1px solid #16150f;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-size: 10px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #8a8578;">King James Version</span>
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 44px; font-weight: 700; letter-spacing: -.035em; line-height: 1;">John III</span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; align-items: center; gap: 13px; padding-bottom: 5px;">
+        <span style="width: 9px; height: 9px; border-radius: 50%; background: #9c3d2e;"></span>
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 19px; font-style: italic; color: #9c3d2e;">verse sixteen is on the stream</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 11px 20px; border: 1.5px solid #16150f; padding-bottom: 11px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16150f" stroke-width="1.6" stroke-linecap="round"><path d="M3 3l18 18M10.6 5.1A9.9 9.9 0 0112 5c5 0 9 4.5 10 7-.5 1.2-1.5 2.8-3 4.2M6.5 6.6C4.4 8 3 10.2 2 12c1 2.5 5 7 10 7 1.7 0 3.2-.5 4.5-1.2"/></svg>
+        <span style="font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;">Blank</span>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 30px 48px; gap: 0;">
+
+      <div style="display: flex; gap: 22px; padding: 13px 0;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 15px; font-weight: 600; color: #b8b2a3; width: 26px; flex-shrink: 0; text-align: right; padding-top: 4px;">14</span>
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 18px; font-weight: 300; line-height: 1.62; color: #6d6759; text-wrap: pretty;">And as Moses lifted up the serpent in the wilderness, even so must the Son of man be lifted up:</span>
+      </div>
+
+      <div style="display: flex; gap: 22px; padding: 13px 0;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 15px; font-weight: 600; color: #b8b2a3; width: 26px; flex-shrink: 0; text-align: right; padding-top: 4px;">15</span>
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 18px; font-weight: 300; line-height: 1.62; color: #6d6759; text-wrap: pretty;">That whosoever believeth in him should not perish, but have eternal life.</span>
+      </div>
+
+      <!-- the live verse: no box, just weight, rule and colour -->
+      <div style="display: flex; gap: 22px; padding: 26px 0; border-top: 3px solid #9c3d2e; border-bottom: 1px solid #9c3d2e; margin: 12px 0;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 15px; font-weight: 700; color: #9c3d2e; width: 26px; flex-shrink: 0; text-align: right; padding-top: 10px;">16</span>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-family: 'Spectral', Georgia, serif; font-size: 29px; font-weight: 400; line-height: 1.4; letter-spacing: -.015em; color: #16150f; text-wrap: pretty;">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</span>
+          <span style="font-size: 10px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #9c3d2e;">Live on the stream &#183; 2 min 14 sec</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 22px; padding: 13px 0;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 15px; font-weight: 600; color: #6d6759; width: 26px; flex-shrink: 0; text-align: right; padding-top: 4px;">17</span>
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 18px; font-weight: 400; line-height: 1.62; color: #16150f; text-wrap: pretty;">For God sent not his Son into the world to condemn the world; but that the world through him might be saved.</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 10px; font-weight: 600; letter-spacing: .24em; text-transform: uppercase; color: #b8b2a3; align-self: center; flex-shrink: 0;">Next &#8595;</span>
+      </div>
+
+      <div style="display: flex; gap: 22px; padding: 13px 0;">
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 15px; font-weight: 600; color: #b8b2a3; width: 26px; flex-shrink: 0; text-align: right; padding-top: 4px;">18</span>
+        <span style="font-family: 'Spectral', Georgia, serif; font-size: 18px; font-weight: 300; line-height: 1.62; color: #6d6759; text-wrap: pretty;">He that believeth on him is not condemned: but he that believeth not is condemned already, because he hath not believed in the name of the only begotten Son of God.</span>
+      </div>
+
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 30px; padding: 15px 48px; border-top: 1px solid #ddd8cb; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #8a8578;">
+      <span><strong style="color: #16150f;">esc</strong> blank</span>
+      <span><strong style="color: #16150f;">&#8593;&#8595;</strong> move a verse</span>
+      <span><strong style="color: #16150f;">1&#8211;4</strong> change item</span>
+      <div style="flex-grow: 1;"></div>
+      <span>OBS source connected</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
