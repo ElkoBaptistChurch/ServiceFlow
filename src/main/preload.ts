@@ -27,6 +27,18 @@ contextBridge.exposeInMainWorld('api', {
   findSongsByTitle: (query: string) => ipcRenderer.invoke(IpcChannels.FindSongsByTitle, query),
   getBlocksForSong: (songId: number) => ipcRenderer.invoke(IpcChannels.GetBlocksForSong, songId),
   searchSongContent: (query: string) => ipcRenderer.invoke(IpcChannels.SearchSongContent, query),
+  createSong: (title: string, ccliNumber: string | null) =>
+    ipcRenderer.invoke(IpcChannels.CreateSong, title, ccliNumber),
+  updateSong: (id: number, title: string, ccliNumber: string | null) =>
+    ipcRenderer.invoke(IpcChannels.UpdateSong, id, title, ccliNumber),
+  deleteSong: (id: number) => ipcRenderer.invoke(IpcChannels.DeleteSong, id),
+  addSongBlock: (songId: number, label: string, text: string) =>
+    ipcRenderer.invoke(IpcChannels.AddSongBlock, songId, label, text),
+  updateSongBlock: (id: number, label: string, text: string) =>
+    ipcRenderer.invoke(IpcChannels.UpdateSongBlock, id, label, text),
+  deleteSongBlock: (id: number) => ipcRenderer.invoke(IpcChannels.DeleteSongBlock, id),
+  reorderSongBlocks: (songId: number, orderedIds: number[]) =>
+    ipcRenderer.invoke(IpcChannels.ReorderSongBlocks, songId, orderedIds),
   getStagedItems: () => ipcRenderer.invoke(IpcChannels.GetStagedItems),
   stageItem: (type: StagedItemType, refId: number, chapter: number | null) =>
     ipcRenderer.invoke(IpcChannels.StageItem, type, refId, chapter),

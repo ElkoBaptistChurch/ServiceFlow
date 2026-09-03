@@ -92,22 +92,21 @@ export default function StagedList({ items, activeItemId, liveStagedItemId, onSe
                 <span className="staged-card__title">{item.label}</span>
               </span>
             </button>
-            {isLive ? (
+            {isLive && (
               <span className="staged-card__live-tag">
                 <span className="dot" />
                 LIVE
               </span>
-            ) : (
-              <button
-                className="staged-card__remove"
-                aria-label={`Remove ${item.label}`}
-                onClick={() => window.api.unstageItem(item.id).then(onChanged)}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
             )}
+            <button
+              className={`staged-card__remove ${isLive ? 'staged-card__remove--live' : ''}`}
+              aria-label={`Remove ${item.label}`}
+              onClick={() => window.api.unstageItem(item.id).then(onChanged)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
           </li>
         );
       })}

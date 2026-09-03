@@ -85,12 +85,15 @@ function mockMainProcessModules(
     reference: null,
   }));
   const setOutputHidden = vi.fn();
+  const clearLiveSelection = vi.fn();
+  const clearStagedItems = vi.fn();
   const getSetting = vi.fn(() => opts.storedPort ?? null);
   const setSetting = vi.fn();
 
   vi.doMock('../../../src/main/db/client', () => ({ openDatabase }));
   vi.doMock('../../../src/main/db/outputStylesRepository', () => ({ seedDefaultOutputStyles }));
-  vi.doMock('../../../src/main/db/liveStateRepository', () => ({ getLiveState, setOutputHidden }));
+  vi.doMock('../../../src/main/db/liveStateRepository', () => ({ getLiveState, setOutputHidden, clearLiveSelection }));
+  vi.doMock('../../../src/main/db/stagedItemsRepository', () => ({ clearStagedItems }));
   vi.doMock('../../../src/main/db/settingsRepository', () => ({ getSetting, setSetting, getTheme }));
   vi.doMock('../../../src/main/server/server', () => ({ createServer }));
   vi.doMock('../../../src/main/ipc/handlers', () => ({ registerIpcHandlers }));
@@ -104,6 +107,8 @@ function mockMainProcessModules(
     getTheme,
     getLiveState,
     setOutputHidden,
+    clearLiveSelection,
+    clearStagedItems,
     getSetting,
     setSetting,
   };
@@ -256,7 +261,10 @@ describe('main/index.ts startup orchestration', () => {
     });
   });
 
-  it('leaves a recent live state alone so in-session crash recovery keeps working', async () => {
+  // Only the "hidden" blanking decision is age-based; the staged list and live selection
+  // are wiped unconditionally on every launch regardless of freshness (see the reset test
+  // below), so this only covers whether a fresh session gets auto-blanked.
+  it('does not auto-blank a recent live state', async () => {
     mockElectron(true);
     const freshUpdatedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30m old
     const modules = mockMainProcessModules({ liveStateUpdatedAt: freshUpdatedAt });
@@ -267,6 +275,21 @@ describe('main/index.ts startup orchestration', () => {
       expect(modules.createServer).toHaveBeenCalled();
     });
     expect(modules.setOutputHidden).not.toHaveBeenCalled();
+  });
+
+  // "Ready for today" must never open onto a previous service's leftovers -- unlike the
+  // hidden-blanking check above, this reset is unconditional on every launch.
+  it('clears the staged list and live selection on every launch', async () => {
+    mockElectron(true);
+    const freshUpdatedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const modules = mockMainProcessModules({ liveStateUpdatedAt: freshUpdatedAt });
+
+    await import('../../../src/main/index');
+
+    await vi.waitFor(() => {
+      expect(modules.clearStagedItems).toHaveBeenCalled();
+    });
+    expect(modules.clearLiveSelection).toHaveBeenCalled();
   });
 
   // Regression for M-05: without persisting the bound port, a fallback port freed up the

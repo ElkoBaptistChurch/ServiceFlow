@@ -125,20 +125,23 @@ export default function ContentPane({
     <div className="content-pane">
       <div className="content-pane__header">
         <span className="content-pane__title">{title}</span>
+        {/* LiveBanner already says this globally; the operator looking at THIS pane, not the
+            banner, needs the same fact right where they're clicking (R-12). Blanking stays
+            sticky by design — this is feedback only, never an auto-unhide. */}
+        {liveState.hidden && (
+          <span role="status" className="content-pane__hidden-icon" title="Output is hidden — the selection below will not appear until it's shown again.">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3l18 18M10.6 5.1A9.9 9.9 0 0112 5c5 0 9 4.5 10 7-.5 1.2-1.5 2.8-3 4.2M6.5 6.6C4.4 8 3 10.2 2 12c1 2.5 5 7 10 7 1.7 0 3.2-.5 4.5-1.2" />
+            </svg>
+            <span className="sr-only">Output is hidden</span>
+          </span>
+        )}
         {activeItem.type === 'bible' && translation && (
           <span className="content-pane__translation">{translation}</span>
         )}
         <div className="header-spacer" />
         <span className="content-pane__hint">Click a verse to put it on the stream</span>
       </div>
-      {/* LiveBanner already says this globally; the operator looking at THIS list, not the
-          banner, needs the same fact right where they're clicking (R-12). Blanking stays
-          sticky by design — this is feedback only, never an auto-unhide. */}
-      {liveState.hidden && (
-        <p role="status" className="content-pane__blanked-notice">
-          Output is hidden — the selection below will not appear until it's shown again.
-        </p>
-      )}
       <ul ref={paneRef} className="content-pane__body" role="list" aria-label="Content" tabIndex={0} onKeyDown={onKeyDown}>
         {entries.map((entry, index) => {
           const live = isLiveId(entry.id);

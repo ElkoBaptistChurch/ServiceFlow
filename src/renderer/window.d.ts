@@ -16,6 +16,13 @@ export interface ServiceFlowApi {
   findSongsByTitle(query: string): Promise<Song[]>;
   getBlocksForSong(songId: number): Promise<SongBlock[]>;
   searchSongContent(query: string): Promise<SongSearchResult[]>;
+  createSong(title: string, ccliNumber: string | null): Promise<Song>;
+  updateSong(id: number, title: string, ccliNumber: string | null): Promise<void>;
+  deleteSong(id: number): Promise<void>;
+  addSongBlock(songId: number, label: string, text: string): Promise<SongBlock>;
+  updateSongBlock(id: number, label: string, text: string): Promise<void>;
+  deleteSongBlock(id: number): Promise<void>;
+  reorderSongBlocks(songId: number, orderedIds: number[]): Promise<void>;
   getStagedItems(): Promise<StagedItem[]>;
   stageItem(type: StagedItemType, refId: number, chapter: number | null): Promise<StagedItem>;
   unstageItem(id: number): Promise<void>;

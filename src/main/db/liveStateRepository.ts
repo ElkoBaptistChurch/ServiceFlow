@@ -86,3 +86,16 @@ export function setOutputHidden(db: Database.Database, hidden: boolean): LiveSta
 export function clearLiveState(db: Database.Database): LiveState {
   return setLiveState(db, null, null, null);
 }
+
+/**
+ * Drops the live selection without touching `hidden` — used at startup once the staged
+ * list is wiped, so the live pointer can't dangle on a now-deleted staged item. Unlike
+ * clearLiveState, this must not un-blank output that was deliberately left hidden.
+ */
+export function clearLiveSelection(db: Database.Database): LiveState {
+  const updatedAt = new Date().toISOString();
+  db.prepare(
+    `UPDATE live_state SET staged_item_id = NULL, verse_or_block_id = NULL, style_id = NULL, updated_at = ? WHERE id = 1`
+  ).run(updatedAt);
+  return getLiveState(db);
+}

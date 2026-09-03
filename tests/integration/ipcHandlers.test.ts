@@ -14,8 +14,11 @@ import {
   handleSetActiveStyle,
   handleUnstageItem,
   handleImportOpenlp,
+  handleDeleteSong,
+  handleDeleteSongBlock,
   getServerUrls,
 } from '../../src/main/ipc/handlers';
+import { createSong, addBlock } from '../../src/main/db/songRepository';
 import { IpcChannels } from '../../src/shared/ipcChannels';
 import { createFixtureSongsDb, createFixtureBibleDb } from '../helpers/openlpFixtures';
 
@@ -173,6 +176,63 @@ describe('handleUnstageItem', () => {
     handleUnstageItem(db, server, fakeWindow, other.id);
 
     expect(getLiveState(db).stagedItemId).toBe(live.id);
+  });
+});
+
+describe('handleDeleteSong', () => {
+  it('unstages and clears live state before deleting a song that is currently live', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const song = createSong(db, 'Test Song', null);
+    const block = addBlock(db, song.id, 'Verse 1', 'Line one');
+    const staged = addStagedItem(db, 'song', song.id, null);
+    handleSetLiveState(db, server, fakeWindow, staged.id, block.id, null);
+
+    handleDeleteSong(db, server, fakeWindow, song.id);
+
+    expect(getLiveState(db).stagedItemId).toBeNull();
+    expect(db.prepare(`SELECT * FROM songs WHERE id = ?`).get(song.id)).toBeUndefined();
+    expect(db.prepare(`SELECT * FROM staged_items WHERE ref_id = ? AND type = 'song'`).get(song.id)).toBeUndefined();
+  });
+
+  it('deletes a song that is not staged without touching live state', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const liveSong = importSong(fakeWindow, 'Live Song');
+    const staged = addStagedItem(db, 'song', liveSong.songId, null);
+    handleSetLiveState(db, server, fakeWindow, staged.id, liveSong.blockId, null);
+    const unrelated = createSong(db, 'Unrelated Song', null);
+
+    handleDeleteSong(db, server, fakeWindow, unrelated.id);
+
+    expect(getLiveState(db).stagedItemId).toBe(staged.id);
+    expect(db.prepare(`SELECT * FROM songs WHERE id = ?`).get(unrelated.id)).toBeUndefined();
+  });
+});
+
+describe('handleDeleteSongBlock', () => {
+  it('clears live state when the deleted block is currently live', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const song = createSong(db, 'Test Song', null);
+    const block = addBlock(db, song.id, 'Verse 1', 'Line one');
+    const staged = addStagedItem(db, 'song', song.id, null);
+    handleSetLiveState(db, server, fakeWindow, staged.id, block.id, null);
+
+    handleDeleteSongBlock(db, server, fakeWindow, block.id);
+
+    expect(getLiveState(db).verseOrBlockId).toBeNull();
+    expect(db.prepare(`SELECT * FROM song_blocks WHERE id = ?`).get(block.id)).toBeUndefined();
+  });
+
+  it('leaves live state alone when the deleted block is not the live one', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const song = createSong(db, 'Test Song', null);
+    const liveBlock = addBlock(db, song.id, 'Verse 1', 'Line one');
+    const otherBlock = addBlock(db, song.id, 'Verse 2', 'Line two');
+    const staged = addStagedItem(db, 'song', song.id, null);
+    handleSetLiveState(db, server, fakeWindow, staged.id, liveBlock.id, null);
+
+    handleDeleteSongBlock(db, server, fakeWindow, otherBlock.id);
+
+    expect(getLiveState(db).verseOrBlockId).toBe(liveBlock.id);
   });
 });
 

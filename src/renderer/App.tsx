@@ -4,6 +4,7 @@ import StagedList from './components/StagedList';
 import ContentPane from './components/ContentPane';
 import LiveBanner from './components/LiveBanner';
 import SettingsScreen from './components/SettingsScreen';
+import LibraryScreen from './components/LibraryScreen';
 import type { LiveState, StagedItem, Theme } from '../shared/types';
 import './styles/app.css';
 
@@ -17,7 +18,7 @@ const EMPTY_LIVE_STATE: LiveState = {
 };
 
 export default function App() {
-  const [view, setView] = useState<'operate' | 'settings'>('operate');
+  const [view, setView] = useState<'operate' | 'library' | 'settings'>('operate');
   const [items, setItems] = useState<StagedItem[]>([]);
   const [activeItem, setActiveItem] = useState<StagedItem | null>(null);
   const [focusEntryId, setFocusEntryId] = useState<number | null>(null);
@@ -196,6 +197,12 @@ export default function App() {
             Operate
           </button>
           <button
+            className={`nav-tab ${view === 'library' ? 'nav-tab--active' : ''}`}
+            onClick={() => setView('library')}
+          >
+            Library
+          </button>
+          <button
             className={`nav-tab ${view === 'settings' ? 'nav-tab--active' : ''}`}
             onClick={() => setView('settings')}
           >
@@ -248,6 +255,8 @@ export default function App() {
       </header>
       {view === 'settings' ? (
         <SettingsScreen onTranslationChange={setTranslation} />
+      ) : view === 'library' ? (
+        <LibraryScreen />
       ) : (
         <div className="app-body">
           <div className="sidebar">

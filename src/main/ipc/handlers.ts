@@ -112,6 +112,37 @@ export function handleUnstageItem(
 }
 
 /**
+ * Deleting a song must not leave OBS showing content the app no longer tracks: unstage
+ * any staged item referencing it first (which itself clears live state through the same
+ * funnel if it was live), then delete — the FK cascade takes care of its blocks.
+ */
+export function handleDeleteSong(
+  db: Database.Database,
+  server: ServerHandle,
+  mainWindow: BrowserWindow,
+  songId: number
+): void {
+  const staged = db.prepare(`SELECT id FROM staged_items WHERE type = 'song' AND ref_id = ?`).all(songId) as {
+    id: number;
+  }[];
+  for (const item of staged) handleUnstageItem(db, server, mainWindow, item.id);
+  songRepo.deleteSong(db, songId);
+}
+
+/** Deleting the block currently live would otherwise leave live_state pointing at a rowid
+ * that no longer exists — clear it through the same funnel as every other live mutation. */
+export function handleDeleteSongBlock(
+  db: Database.Database,
+  server: ServerHandle,
+  mainWindow: BrowserWindow,
+  blockId: number
+): void {
+  const wasLive = liveRepo.getLiveState(db).verseOrBlockId === blockId;
+  songRepo.deleteBlock(db, blockId);
+  if (wasLive) publishLiveState(server, mainWindow, liveRepo.clearLiveState(db));
+}
+
+/**
  * Files are classified by looking inside them, never by filename — a bible file under
  * `C:\Users\songleader\...` would otherwise be imported as a song library.
  *
@@ -237,6 +268,23 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannels.FindSongsByTitle, (_e, query: string) => songRepo.findSongsByTitle(db, query));
   ipcMain.handle(IpcChannels.GetBlocksForSong, (_e, songId: number) => songRepo.getBlocksForSong(db, songId));
   ipcMain.handle(IpcChannels.SearchSongContent, (_e, query: string) => songRepo.searchSongContent(db, query));
+  ipcMain.handle(IpcChannels.CreateSong, (_e, title: string, ccliNumber: string | null) =>
+    songRepo.createSong(db, title, ccliNumber)
+  );
+  ipcMain.handle(IpcChannels.UpdateSong, (_e, id: number, title: string, ccliNumber: string | null) =>
+    songRepo.updateSong(db, id, title, ccliNumber)
+  );
+  ipcMain.handle(IpcChannels.DeleteSong, (_e, id: number) => handleDeleteSong(db, server, mainWindow, id));
+  ipcMain.handle(IpcChannels.AddSongBlock, (_e, songId: number, label: string, text: string) =>
+    songRepo.addBlock(db, songId, label, text)
+  );
+  ipcMain.handle(IpcChannels.UpdateSongBlock, (_e, id: number, label: string, text: string) =>
+    songRepo.updateBlock(db, id, label, text)
+  );
+  ipcMain.handle(IpcChannels.DeleteSongBlock, (_e, id: number) => handleDeleteSongBlock(db, server, mainWindow, id));
+  ipcMain.handle(IpcChannels.ReorderSongBlocks, (_e, songId: number, orderedIds: number[]) =>
+    songRepo.reorderBlocks(db, songId, orderedIds)
+  );
   ipcMain.handle(IpcChannels.GetStagedItems, () => stagedRepo.getStagedItems(db));
   ipcMain.handle(IpcChannels.StageItem, (_e, type: StagedItemType, refId: number, chapter: number | null) =>
     stagedRepo.addStagedItem(db, type, refId, chapter)

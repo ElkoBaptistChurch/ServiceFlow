@@ -51,6 +51,12 @@ export function removeStagedItem(db: Database.Database, id: number): void {
   db.prepare(`DELETE FROM staged_items WHERE id = ?`).run(id);
 }
 
+/** Wipes today's service list. Called once at app startup so a service never opens onto
+ * a previous service's leftovers. */
+export function clearStagedItems(db: Database.Database): void {
+  db.prepare(`DELETE FROM staged_items`).run();
+}
+
 export function reorderStagedItems(db: Database.Database, orderedIds: number[]): void {
   const update = db.prepare(`UPDATE staged_items SET position = ? WHERE id = ?`);
   const selectCurrent = db.prepare(`SELECT id FROM staged_items ORDER BY position, id`);

@@ -36,13 +36,17 @@ describe('StagedList', () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
-  // The live card is marked with a LIVE tag instead of a remove button (IMPLEMENTATION.md:
-  // the live card must not change height, and it must stay identifiable at a glance).
-  it('marks the live item with a LIVE tag instead of a remove button', () => {
-    render(<StagedList items={items} activeItemId={null} liveStagedItemId={1} onSelectActive={vi.fn()} onChanged={vi.fn()} />);
+  // The live card shows a LIVE tag at a glance, but the operator must still be able to
+  // pull it off the stream -- hovering swaps the tag for a remove button (CSS-driven; see
+  // .staged-card__remove--live), so both stay in the DOM and clicking still unstages it.
+  it('marks the live item with a LIVE tag, but still allows removing it', async () => {
+    const onChanged = vi.fn();
+    render(<StagedList items={items} activeItemId={null} liveStagedItemId={1} onSelectActive={vi.fn()} onChanged={onChanged} />);
     expect(screen.getByText('LIVE')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /remove john 3/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /remove amazing grace/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /remove john 3/i }));
+    await waitFor(() => expect(window.api.unstageItem).toHaveBeenCalledWith(1));
+    expect(onChanged).toHaveBeenCalled();
   });
 
   // R-02: the operator must be able to see which item they're browsing, not just which

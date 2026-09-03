@@ -109,7 +109,7 @@ describe('ContentPane', () => {
     render(<ContentPane activeItem={bibleItem} liveState={hiddenLive} focusEntryId={null} onFocusHandled={vi.fn()} onLive={vi.fn()} />);
     const match = await screen.findByText(/For God sent not his Son/);
     expect(match.closest('button')).toHaveAttribute('data-blanked', 'true');
-    expect(screen.getByText(/output is (blank|hidden)/i)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/output is hidden/i);
   });
 
   // R-13a: a shape the fetch effect doesn't recognize (e.g. a bible item with no chapter)

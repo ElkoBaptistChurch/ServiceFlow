@@ -3,7 +3,8 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { openDatabase } from './db/client';
 import { seedDefaultOutputStyles } from './db/outputStylesRepository';
-import { getLiveState, setOutputHidden } from './db/liveStateRepository';
+import { getLiveState, setOutputHidden, clearLiveSelection } from './db/liveStateRepository';
+import { clearStagedItems } from './db/stagedItemsRepository';
 import * as settingsRepo from './db/settingsRepository';
 import { createServer, ServerHandle } from './server/server';
 import { registerIpcHandlers } from './ipc/handlers';
@@ -78,6 +79,13 @@ async function createWindow() {
   if (Date.now() - new Date(live.updatedAt).getTime() > STALE_LIVE_STATE_MS) {
     setOutputHidden(db, true);
   }
+
+  // "Ready for today" always opens empty -- unlike the hidden check above, this is an
+  // unconditional reset on every launch, not an age bound. Drop the live pointer first
+  // (via clearLiveSelection, which leaves `hidden` alone) so it can never dangle on a
+  // staged item that's about to be deleted.
+  clearLiveSelection(db);
+  clearStagedItems(db);
 
   const server = createServer(db);
   serverRef = server;

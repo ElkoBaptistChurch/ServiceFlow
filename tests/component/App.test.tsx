@@ -51,6 +51,12 @@ describe('App', () => {
     expect(await screen.findByText(/OBS Browser Source URLs/i)).toBeInTheDocument();
   });
 
+  it('switches to the library view', async () => {
+    render(<App />);
+    screen.getByRole('button', { name: /library/i }).click();
+    expect(await screen.findByRole('button', { name: /new song/i })).toBeInTheDocument();
+  });
+
   it('focuses the search box when "/" is pressed', async () => {
     render(<App />);
     const input = await screen.findByPlaceholderText(/search/i);
