@@ -16,6 +16,7 @@ interface ElectronMock {
   };
   BrowserWindow: ReturnType<typeof vi.fn>;
   dialog: { showErrorBox: ReturnType<typeof vi.fn> };
+  Menu: { setApplicationMenu: ReturnType<typeof vi.fn> };
   browserWindowInstance: {
     on: ReturnType<typeof vi.fn>;
     isMinimized: ReturnType<typeof vi.fn>;
@@ -45,12 +46,14 @@ function mockElectron(lockAcquired: boolean): ElectronMock {
     },
     BrowserWindow: vi.fn(() => browserWindowInstance),
     dialog: { showErrorBox: vi.fn() },
+    Menu: { setApplicationMenu: vi.fn() },
     browserWindowInstance,
   };
   vi.doMock('electron', () => ({
     app: mock.app,
     BrowserWindow: mock.BrowserWindow,
     dialog: mock.dialog,
+    Menu: mock.Menu,
   }));
   return mock;
 }
