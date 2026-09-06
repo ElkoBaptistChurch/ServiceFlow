@@ -126,6 +126,10 @@ async function createWindow() {
     // a service where the operator is least able to go hunting for the next item.
     width: 1440,
     height: 900,
+    // Below this the operate screen can't lay out a usable sidebar + content pane even in
+    // the narrow (stacked) layout; matches the 512x768 half-screen dock target.
+    minWidth: 480,
+    minHeight: 600,
     backgroundColor: THEME_BACKGROUND_COLOR[theme],
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

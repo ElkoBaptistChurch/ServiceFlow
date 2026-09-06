@@ -92,7 +92,7 @@ button {
 }
 
 .error-banner {
-  padding: 10px 32px;
+  padding: 10px 20px;
   background: #b3452f;
   color: #fff;
   font-size: 13px;
@@ -106,10 +106,12 @@ button {
 .app-header {
   display: flex;
   align-items: center;
-  gap: 28px;
-  height: 76px;
+  flex-wrap: wrap;
+  gap: 20px;
+  row-gap: 8px;
+  min-height: 76px;
   flex-shrink: 0;
-  padding: 0 32px;
+  padding: 10px 20px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -154,6 +156,8 @@ button {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
+  margin-left: auto;
 }
 
 .live-pill {
@@ -168,6 +172,14 @@ button {
   font-weight: 600;
   color: var(--ink-2);
   white-space: nowrap;
+  min-width: 0;
+}
+
+.live-pill__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .live-pill__dot {
@@ -248,12 +260,12 @@ button {
   display: flex;
   flex-grow: 1;
   min-height: 0;
-  padding: 28px 32px 0;
-  gap: 28px;
+  padding: 20px 20px 0;
+  gap: 20px;
 }
 
 .sidebar {
-  width: 396px;
+  width: 340px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -805,9 +817,10 @@ button {
   display: flex;
   align-items: baseline;
   gap: 14px;
-  padding: 24px 32px 20px;
+  padding: 20px 24px 16px;
   border-bottom: 1px solid var(--rule);
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .content-pane__title {
@@ -816,6 +829,10 @@ button {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .content-pane__translation {
@@ -852,7 +869,7 @@ button {
   margin: 0;
   flex-grow: 1;
   min-height: 0;
-  padding: 20px 24px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -971,7 +988,7 @@ button {
   display: flex;
   align-items: center;
   gap: 24px;
-  padding: 16px 32px;
+  padding: 14px 24px;
   background: var(--bg);
   border-top: 1px solid var(--rule);
   font-size: 13px;
@@ -1007,7 +1024,7 @@ button {
   flex-grow: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 28px 32px 40px;
+  padding: 24px 20px 40px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -1190,7 +1207,7 @@ button {
   min-height: 0;
   display: flex;
   gap: 24px;
-  padding: 28px 32px;
+  padding: 20px 20px;
   background: var(--bg);
 }
 
@@ -1338,4 +1355,61 @@ button {
 
 .btn-pill--danger {
   background: var(--danger, #b3362c);
+}
+
+/* ---------- Narrow / docked layout (half-screen, ~512px wide) ----------
+   Below this the sidebar's 340px fixed width plus a side-by-side content pane no longer
+   fits: the operate screen stacks the service list above the content pane instead, each
+   scrolling independently, and the header sheds anything that isn't essential to read at
+   a glance. */
+@media (max-width: 760px) {
+  .app-body {
+    flex-direction: column;
+    padding: 14px 14px 0;
+    gap: 14px;
+  }
+
+  .sidebar {
+    width: auto;
+    flex: 0 1 42%;
+  }
+
+  .content-pane,
+  .content-pane__empty {
+    flex: 1 1 auto;
+  }
+
+  .blank-btn {
+    padding: 11px;
+    gap: 0;
+  }
+
+  .blank-btn__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .content-pane__hint {
+    display: none;
+  }
+
+  .content-pane__header {
+    padding: 16px 18px 14px;
+  }
+
+  .content-pane__body {
+    padding: 14px 16px;
+  }
+
+  .content-pane__footer {
+    padding: 12px 18px;
+    gap: 14px;
+  }
 }

@@ -19,7 +19,7 @@ export default function LiveBanner({ liveState }: Props) {
       {liveState.reference != null && (
         <span className={`live-pill__dot ${liveState.hidden ? 'live-pill__dot--blank' : ''}`} />
       )}
-      <span>{label}</span>
+      <span className="live-pill__label">{label}</span>
     </div>
   );
 }
