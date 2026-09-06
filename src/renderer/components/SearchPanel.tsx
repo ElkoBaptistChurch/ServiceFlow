@@ -104,7 +104,10 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
               onSelect: () =>
                 window.api
                   .stageItem('bible', r.verse.bookId, r.verse.chapter)
-                  .then((item) => onStaged(item, r.verse.id)),
+                  .then((item) => {
+                    onStaged(item, r.verse.id);
+                    setQuery('');
+                  }),
             }))
           );
           setSearching(false);
@@ -116,7 +119,11 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
             results.map((r) => ({
               ref: `${r.songTitle} (${r.block.label})`,
               snippet: r.block.text,
-              onSelect: () => window.api.stageItem('song', r.block.songId, null).then((item) => onStaged(item, r.block.id)),
+              onSelect: () =>
+                window.api.stageItem('song', r.block.songId, null).then((item) => {
+                  onStaged(item, r.block.id);
+                  setQuery('');
+                }),
             }))
           );
           setSearching(false);
@@ -148,13 +155,21 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
       : mode === 'bible' && selectedBook
         ? chapters.map((c) => ({
             key: c,
-            onSelect: () => window.api.stageItem('bible', selectedBook.id, c).then((item) => onStaged(item, null)),
+            onSelect: () =>
+              window.api.stageItem('bible', selectedBook.id, c).then((item) => {
+                onStaged(item, null);
+                setQuery('');
+              }),
           }))
         : mode === 'bible'
           ? books.map((b) => ({ key: b.id, onSelect: () => selectBook(b) }))
           : songs.map((s) => ({
               key: s.id,
-              onSelect: () => window.api.stageItem('song', s.id, null).then((item) => onStaged(item, null)),
+              onSelect: () =>
+                window.api.stageItem('song', s.id, null).then((item) => {
+                  onStaged(item, null);
+                  setQuery('');
+                }),
             }));
 
   useEffect(() => {
@@ -314,7 +329,10 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
                     type="button"
                     className={`chapter-cell ${i === safeHighlighted ? 'chapter-cell--active' : ''}`}
                     onClick={() =>
-                      window.api.stageItem('bible', selectedBook.id, c).then((item) => onStaged(item, null))
+                      window.api.stageItem('bible', selectedBook.id, c).then((item) => {
+                        onStaged(item, null);
+                        setQuery('');
+                      })
                     }
                   >
                     {c}
@@ -335,7 +353,12 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
                   <li key={s.id}>
                     <button
                       className={`search-popover__row-btn ${i === safeHighlighted ? 'search-popover__row-btn--active' : ''}`}
-                      onClick={() => window.api.stageItem('song', s.id, null).then((item) => onStaged(item, null))}
+                      onClick={() =>
+                        window.api.stageItem('song', s.id, null).then((item) => {
+                          onStaged(item, null);
+                          setQuery('');
+                        })
+                      }
                     >
                       <span className="search-popover__row-title">{s.title}</span>
                     </button>
