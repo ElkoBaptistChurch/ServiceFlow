@@ -442,24 +442,32 @@ button {
   flex-direction: column;
   gap: 6px;
   overflow-y: auto;
+}
+
+.staged-list,
+.content-pane__body {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
 
-.staged-list::-webkit-scrollbar {
+.staged-list::-webkit-scrollbar,
+.content-pane__body::-webkit-scrollbar {
   width: 8px;
 }
 
-.staged-list::-webkit-scrollbar-track {
+.staged-list::-webkit-scrollbar-track,
+.content-pane__body::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.staged-list::-webkit-scrollbar-thumb {
+.staged-list::-webkit-scrollbar-thumb,
+.content-pane__body::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 4px;
 }
 
-.staged-list::-webkit-scrollbar-thumb:hover {
+.staged-list::-webkit-scrollbar-thumb:hover,
+.content-pane__body::-webkit-scrollbar-thumb:hover {
   background: var(--muted-3);
 }
 
