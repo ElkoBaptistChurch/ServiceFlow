@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, Menu } from 'electron';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { openDatabase } from './db/client';
@@ -169,6 +169,10 @@ async function createWindow() {
 // (not just openDatabase) and say so before quitting.
 if (gotLock) {
   app.whenReady().then(async () => {
+    // Electron's default File/Edit/View/Window/Help menu is Chromium-browser boilerplate
+    // (Reload, DevTools, zoom, speech, ...) that has nothing to do with an operator console
+    // running on a single Windows box. Drop it rather than leave a dead menu bar on screen.
+    Menu.setApplicationMenu(null);
     try {
       await createWindow();
     } catch (err) {
