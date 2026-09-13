@@ -1321,10 +1321,24 @@ button {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 20px 22px;
+  padding: 16px 22px;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.song-library__meta-field {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.song-library__meta-field--ccli {
+  flex-grow: 0;
+  width: 200px;
+  flex-shrink: 0;
 }
 
 .song-library__blocks {
@@ -1339,22 +1353,37 @@ button {
 .song-block-row {
   display: flex;
   gap: 10px;
-  align-items: flex-start;
+  align-items: stretch;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px 14px;
 }
 
+.song-block-row--drag-over {
+  border-color: var(--ink);
+}
+
+.song-block-row__handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--muted-2);
+  cursor: grab;
+}
+
 .song-block-row__label {
   width: 120px;
   flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .song-block-row__text {
   flex-grow: 1;
   min-width: 0;
-  min-height: 60px;
+  min-height: 40px;
+  height: auto;
   padding: 8px 12px;
   border-radius: 9px;
   background: var(--surface);
@@ -1362,17 +1391,22 @@ button {
   color: var(--ink);
   font-size: 14px;
   font-family: inherit;
-  resize: vertical;
-}
-
-.song-block-row__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  resize: none;
+  overflow: hidden;
 }
 
 .btn-pill--danger {
   background: var(--danger, #b3362c);
+}
+
+.btn-pill--small {
+  padding: 5px 12px;
+  font-size: 12px;
+  align-self: flex-start;
+}
+
+.song-library__add-verse {
+  align-self: flex-start;
 }
 
 /* ---------- Narrow / docked layout (half-screen, ~512px wide) ----------

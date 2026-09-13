@@ -96,11 +96,14 @@ describe('SongLibraryPanel', () => {
     await waitFor(() => expect(window.api.deleteSongBlock).toHaveBeenCalledWith(10));
   });
 
-  it('moves a block down and calls reorderSongBlocks with the new order', async () => {
+  it('reorders blocks via drag and drop and calls reorderSongBlocks with the new order', async () => {
     render(<SongLibraryPanel />);
     fireEvent.click(await screen.findByText('Amazing Grace'));
     await screen.findByDisplayValue('Amazing grace, how sweet the sound');
-    fireEvent.click(screen.getAllByRole('button', { name: /move down/i })[0]);
+    const rows = document.querySelectorAll('.song-block-row');
+    fireEvent.dragStart(rows[0]);
+    fireEvent.dragOver(rows[1]);
+    fireEvent.drop(rows[1]);
     await waitFor(() => expect(window.api.reorderSongBlocks).toHaveBeenCalledWith(1, [11, 10]));
   });
 
