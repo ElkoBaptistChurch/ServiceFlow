@@ -25,6 +25,7 @@ beforeEach(() => {
     setTheme: vi.fn().mockResolvedValue(undefined),
     findBibleBooks: vi.fn().mockResolvedValue([]),
     findSongsByTitle: vi.fn().mockResolvedValue([]),
+    findSongsByQuery: vi.fn().mockResolvedValue([]),
     getBlocksForSong: vi.fn().mockResolvedValue([]),
     getVersesForChapter: vi.fn().mockResolvedValue([]),
     unstageItem: vi.fn().mockResolvedValue(undefined),

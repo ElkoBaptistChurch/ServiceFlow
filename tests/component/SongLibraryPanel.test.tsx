@@ -15,9 +15,11 @@ const blocksForSong1 = [
 beforeEach(() => {
   (window as any).api = {
     findSongsByTitle: vi.fn().mockResolvedValue(songs),
+    findSongsByQuery: vi.fn().mockResolvedValue(songs),
     getBlocksForSong: vi.fn().mockImplementation((songId: number) =>
       Promise.resolve(songId === 1 ? blocksForSong1 : [])
     ),
+    findDuplicateSong: vi.fn().mockResolvedValue(null),
     createSong: vi.fn().mockResolvedValue({ id: 3, title: 'New Song', ccliNumber: null }),
     updateSong: vi.fn().mockResolvedValue(undefined),
     deleteSong: vi.fn().mockResolvedValue(undefined),
@@ -84,7 +86,17 @@ describe('SongLibraryPanel', () => {
     expect(window.api.addSongBlock).not.toHaveBeenCalled();
 
     clickSave();
-    await waitFor(() => expect(window.api.addSongBlock).toHaveBeenCalledWith(1, 'Verse 3', ''));
+    await waitFor(() => expect(window.api.addSongBlock).toHaveBeenCalledWith(1, 'Verse 2', ''));
+  });
+
+  it('numbers a new verse after the highest existing verse number, not the total block count', async () => {
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    await screen.findByDisplayValue('Amazing grace, how sweet the sound');
+    fireEvent.click(screen.getByRole('button', { name: /add verse/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add verse/i }));
+    expect(screen.getByDisplayValue('Verse 2')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Verse 3')).toBeInTheDocument();
   });
 
   it('does not persist an edited block until Save is clicked', async () => {
@@ -201,5 +213,111 @@ describe('SongLibraryPanel', () => {
     clickSave();
     await waitFor(() => expect(window.api.updateSong).toHaveBeenCalled());
     expect(guard!()).toBe(true);
+  });
+
+  it('shows an error and does not clear dirty state when a save fails', async () => {
+    (window.api.updateSong as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Database is locked'));
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    const titleInput = await screen.findByDisplayValue('Amazing Grace');
+    fireEvent.change(titleInput, { target: { value: 'Amazing Grace (Traditional)' } });
+
+    clickSave();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Database is locked');
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
+  });
+
+  it('lets the error banner be dismissed', async () => {
+    (window.api.getBlocksForSong as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Load failed'));
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss error/i }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('blocks Save and shows an error when the title exactly matches another song', async () => {
+    (window.api.findDuplicateSong as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 2,
+      title: 'How Great Thou Art',
+      ccliNumber: '14181',
+    });
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    const titleInput = await screen.findByDisplayValue('Amazing Grace');
+    fireEvent.change(titleInput, { target: { value: 'How Great Thou Art' } });
+
+    clickSave();
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already exists/i);
+    expect(window.api.updateSong).not.toHaveBeenCalled();
+  });
+
+  it('blocks Save and shows an error when the CCLI number matches another song', async () => {
+    (window.api.findDuplicateSong as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 2,
+      title: 'How Great Thou Art',
+      ccliNumber: '14181',
+    });
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    const ccliInput = await screen.findByDisplayValue('22025');
+    fireEvent.change(ccliInput, { target: { value: '14181' } });
+
+    clickSave();
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already used by "How Great Thou Art"/i);
+    expect(window.api.updateSong).not.toHaveBeenCalled();
+  });
+
+  it('does not check for duplicates when title and CCLI number are unchanged', async () => {
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    const textArea = await screen.findByDisplayValue('Amazing grace, how sweet the sound');
+    fireEvent.change(textArea, { target: { value: 'Updated first line' } });
+
+    clickSave();
+    await waitFor(() => expect(window.api.updateSongBlock).toHaveBeenCalled());
+    expect(window.api.findDuplicateSong).not.toHaveBeenCalled();
+  });
+
+  it('focuses and selects the title field when a new song is created', async () => {
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /new song/i }));
+    const titleInput = await screen.findByDisplayValue('New Song');
+    expect(titleInput).toHaveFocus();
+  });
+
+  it('marks the open song in the list as having unsaved changes', async () => {
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    const titleInput = await screen.findByDisplayValue('Amazing Grace');
+    expect(screen.queryByText('(unsaved changes)')).not.toBeInTheDocument();
+
+    fireEvent.change(titleInput, { target: { value: 'Amazing Grace (Traditional)' } });
+    expect(screen.getByText('(unsaved changes)')).toBeInTheDocument();
+
+    clickSave();
+    await waitFor(() => expect(screen.queryByText('(unsaved changes)')).not.toBeInTheDocument());
+  });
+
+  it('saves with Ctrl+S when there are unsaved changes', async () => {
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    const titleInput = await screen.findByDisplayValue('Amazing Grace');
+    fireEvent.change(titleInput, { target: { value: 'Amazing Grace (Traditional)' } });
+
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await waitFor(() =>
+      expect(window.api.updateSong).toHaveBeenCalledWith(1, 'Amazing Grace (Traditional)', '22025')
+    );
+  });
+
+  it('does not save with Ctrl+S when there are no unsaved changes', async () => {
+    render(<SongLibraryPanel />);
+    fireEvent.click(await screen.findByText('Amazing Grace'));
+    await screen.findByDisplayValue('Amazing grace, how sweet the sound');
+
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    expect(window.api.updateSong).not.toHaveBeenCalled();
   });
 });

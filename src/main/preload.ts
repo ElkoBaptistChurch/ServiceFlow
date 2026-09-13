@@ -25,8 +25,11 @@ contextBridge.exposeInMainWorld('api', {
   searchBibleContent: (query: string, translation: string) =>
     ipcRenderer.invoke(IpcChannels.SearchBibleContent, query, translation),
   findSongsByTitle: (query: string) => ipcRenderer.invoke(IpcChannels.FindSongsByTitle, query),
+  findSongsByQuery: (query: string) => ipcRenderer.invoke(IpcChannels.FindSongsByQuery, query),
   getBlocksForSong: (songId: number) => ipcRenderer.invoke(IpcChannels.GetBlocksForSong, songId),
   searchSongContent: (query: string) => ipcRenderer.invoke(IpcChannels.SearchSongContent, query),
+  findDuplicateSong: (title: string, ccliNumber: string | null, excludeId: number) =>
+    ipcRenderer.invoke(IpcChannels.FindDuplicateSong, title, ccliNumber, excludeId),
   createSong: (title: string, ccliNumber: string | null) =>
     ipcRenderer.invoke(IpcChannels.CreateSong, title, ccliNumber),
   updateSong: (id: number, title: string, ccliNumber: string | null) =>

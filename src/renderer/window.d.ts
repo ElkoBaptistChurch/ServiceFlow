@@ -14,8 +14,10 @@ export interface ServiceFlowApi {
   getVersesForChapter(bookId: number, chapter: number): Promise<BibleVerse[]>;
   searchBibleContent(query: string, translation: string): Promise<BibleSearchResult[]>;
   findSongsByTitle(query: string): Promise<Song[]>;
+  findSongsByQuery(query: string): Promise<Song[]>;
   getBlocksForSong(songId: number): Promise<SongBlock[]>;
   searchSongContent(query: string): Promise<SongSearchResult[]>;
+  findDuplicateSong(title: string, ccliNumber: string | null, excludeId: number): Promise<Song | null>;
   createSong(title: string, ccliNumber: string | null): Promise<Song>;
   updateSong(id: number, title: string, ccliNumber: string | null): Promise<void>;
   deleteSong(id: number): Promise<void>;

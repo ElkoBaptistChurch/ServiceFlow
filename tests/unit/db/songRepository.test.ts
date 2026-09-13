@@ -3,6 +3,8 @@ import Database from 'better-sqlite3';
 import { applySchema } from '../../../src/main/db/schema';
 import {
   findSongsByTitle,
+  findSongsByQuery,
+  findDuplicateSong,
   getBlocksForSong,
   searchSongContent,
   createSong,
@@ -46,6 +48,40 @@ describe('songRepository', () => {
     db.prepare(`INSERT INTO songs (id, title) VALUES (2, '50% Off Your Sins')`).run();
     expect(findSongsByTitle(db, '50%').map((s) => s.title)).toEqual(['50% Off Your Sins']);
     expect(findSongsByTitle(db, 'z_ng')).toEqual([]);
+  });
+
+  it('finds a song by title, CCLI number, or lyric text', () => {
+    db.prepare(`UPDATE songs SET ccli_number = '22025' WHERE id = 1`).run();
+    expect(findSongsByQuery(db, 'amaz').map((s) => s.title)).toEqual(['Amazing Grace']);
+    expect(findSongsByQuery(db, '22025').map((s) => s.title)).toEqual(['Amazing Grace']);
+    expect(findSongsByQuery(db, 'chains are gone').map((s) => s.title)).toEqual(['Amazing Grace']);
+    expect(findSongsByQuery(db, 'nonexistent')).toEqual([]);
+  });
+
+  it('finds no duplicate for a unique title and CCLI number', () => {
+    expect(findDuplicateSong(db, 'How Great Thou Art', '14181', 1)).toBeNull();
+  });
+
+  it('finds a duplicate by exact, case-insensitive title match', () => {
+    createSong(db, 'How Great Thou Art', '14181');
+    const duplicate = findDuplicateSong(db, 'how great thou art', null, 1);
+    expect(duplicate?.title).toBe('How Great Thou Art');
+  });
+
+  it('finds a duplicate by exact CCLI number match, ignoring title', () => {
+    createSong(db, 'How Great Thou Art', '14181');
+    const duplicate = findDuplicateSong(db, 'A Different Title', '14181', 1);
+    expect(duplicate?.title).toBe('How Great Thou Art');
+  });
+
+  it('excludes the song being edited from its own duplicate check', () => {
+    updateSong(db, 1, 'Amazing Grace', '22025');
+    expect(findDuplicateSong(db, 'Amazing Grace', '22025', 1)).toBeNull();
+  });
+
+  it('does not treat two songs with no CCLI number as duplicates of each other', () => {
+    createSong(db, 'Some Other Song', null);
+    expect(findDuplicateSong(db, 'A Third Song', null, 1)).toBeNull();
   });
 
   it('lists blocks for a song in display order', () => {

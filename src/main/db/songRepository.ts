@@ -23,6 +23,47 @@ export function findSongsByTitle(db: Database.Database, query: string): Song[] {
   return rows.map(rowToSong);
 }
 
+// Widens the library screen's own search box beyond title to also catch a song by its
+// CCLI number or a phrase from its lyrics, without touching findSongsByTitle's narrower
+// title-only contract used by the staging search panel and the OpenLP importer.
+export function findSongsByQuery(db: Database.Database, query: string): Song[] {
+  const pattern = `%${escapeLikePattern(query)}%`;
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT s.* FROM songs s
+       LEFT JOIN song_blocks sb ON sb.song_id = s.id
+       WHERE s.title LIKE ? ESCAPE '\\'
+          OR s.ccli_number LIKE ? ESCAPE '\\'
+          OR sb.text LIKE ? ESCAPE '\\'
+       ORDER BY s.title
+       LIMIT 20`
+    )
+    .all(pattern, pattern, pattern);
+  return rows.map(rowToSong);
+}
+
+// Strict, exact-match duplicate check (case-insensitive title, exact CCLI number) run before
+// a save persists an edited title/CCLI — deliberately not the fuzzy LIKE search above, since a
+// "did you mean" prompt on every partial match would be more annoying than useful here.
+export function findDuplicateSong(
+  db: Database.Database,
+  title: string,
+  ccliNumber: string | null,
+  excludeId: number
+): Song | null {
+  const trimmedTitle = title.trim();
+  const trimmedCcli = ccliNumber?.trim() || null;
+  const row = db
+    .prepare(
+      `SELECT * FROM songs
+       WHERE id != ?
+         AND (LOWER(title) = LOWER(?) OR (? IS NOT NULL AND ccli_number = ?))
+       LIMIT 1`
+    )
+    .get(excludeId, trimmedTitle, trimmedCcli, trimmedCcli);
+  return row ? rowToSong(row) : null;
+}
+
 export function getBlocksForSong(db: Database.Database, songId: number): SongBlock[] {
   const rows = db.prepare(`SELECT * FROM song_blocks WHERE song_id = ? ORDER BY display_order`).all(songId);
   return rows.map(rowToBlock);

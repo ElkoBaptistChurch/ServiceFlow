@@ -5,6 +5,7 @@ import LibraryScreen from '../../src/renderer/components/LibraryScreen';
 beforeEach(() => {
   (window as any).api = {
     findSongsByTitle: vi.fn().mockResolvedValue([]),
+    findSongsByQuery: vi.fn().mockResolvedValue([]),
     getBlocksForSong: vi.fn().mockResolvedValue([]),
   };
 });

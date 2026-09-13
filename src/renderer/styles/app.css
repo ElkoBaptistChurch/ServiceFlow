@@ -1265,9 +1265,48 @@ button {
 
 .song-library {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.song-library__body {
+  display: flex;
   gap: 24px;
   flex-grow: 1;
   min-height: 0;
+}
+
+.song-library__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--danger, #b3362c);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.song-library__error-dismiss {
+  appearance: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.song-library__unsaved-dot {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .song-library__list {

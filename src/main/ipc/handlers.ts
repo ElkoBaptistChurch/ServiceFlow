@@ -266,8 +266,12 @@ export function registerIpcHandlers(
     bibleRepo.searchBibleContent(db, query, translation)
   );
   ipcMain.handle(IpcChannels.FindSongsByTitle, (_e, query: string) => songRepo.findSongsByTitle(db, query));
+  ipcMain.handle(IpcChannels.FindSongsByQuery, (_e, query: string) => songRepo.findSongsByQuery(db, query));
   ipcMain.handle(IpcChannels.GetBlocksForSong, (_e, songId: number) => songRepo.getBlocksForSong(db, songId));
   ipcMain.handle(IpcChannels.SearchSongContent, (_e, query: string) => songRepo.searchSongContent(db, query));
+  ipcMain.handle(IpcChannels.FindDuplicateSong, (_e, title: string, ccliNumber: string | null, excludeId: number) =>
+    songRepo.findDuplicateSong(db, title, ccliNumber, excludeId)
+  );
   ipcMain.handle(IpcChannels.CreateSong, (_e, title: string, ccliNumber: string | null) =>
     songRepo.createSong(db, title, ccliNumber)
   );
