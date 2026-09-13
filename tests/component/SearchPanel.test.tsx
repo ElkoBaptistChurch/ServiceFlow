@@ -237,4 +237,66 @@ describe('SearchPanel', () => {
     expect(await screen.findByText('John')).toBeInTheDocument();
     expect(screen.queryByText('3')).not.toBeInTheDocument();
   });
+
+  // Book + chapter combined search: "mark 5" should skip the book-list click and jump
+  // straight to a chapter grid for Mark, filtered to chapters starting with "5" and with
+  // the exact match (5) marked as the default pick.
+  it('auto-finds a book+chapter search and shows prefix matches alongside the exact one', async () => {
+    const MARK = { id: 41, translation: 'KJV', sourceBookId: 41, name: 'Mark', testament: 'NT', sortOrder: 41 };
+    (window.api.findBibleBooks as any).mockImplementation((q: string) =>
+      q === 'mark' ? Promise.resolve([MARK]) : Promise.resolve([])
+    );
+    (window.api.getChaptersForBook as any).mockResolvedValue([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+
+    render(<SearchPanel translation="KJV" onStaged={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'mark 5' } });
+
+    await waitFor(() => expect(window.api.findBibleBooks).toHaveBeenCalledWith('mark', 'KJV'));
+    await waitFor(() => expect(window.api.getChaptersForBook).toHaveBeenCalledWith(41));
+
+    // No intermediate book-list click needed: the chapter grid for Mark is already showing.
+    expect(await screen.findByText('Mark')).toBeInTheDocument();
+    expect(screen.getByText('5')).toBeInTheDocument();
+    // Chapters that don't start with "5" (e.g. 1) must not appear in this filtered grid.
+    expect(screen.queryByText('1')).not.toBeInTheDocument();
+  });
+
+  it('stages the exact chapter match on Enter when it is the only exact match', async () => {
+    const MARK = { id: 41, translation: 'KJV', sourceBookId: 41, name: 'Mark', testament: 'NT', sortOrder: 41 };
+    (window.api.findBibleBooks as any).mockResolvedValue([MARK]);
+    (window.api.getChaptersForBook as any).mockResolvedValue([1, 2, 3, 4, 5]);
+    (window.api.stageItem as any).mockResolvedValue({ id: 9, type: 'bible', refId: 41, chapter: 5, position: 0, label: 'Mark 5 (KJV)' });
+    const onStaged = vi.fn();
+
+    render(<SearchPanel translation="KJV" onStaged={onStaged} />);
+    const input = screen.getByPlaceholderText(/search/i);
+    fireEvent.change(input, { target: { value: 'mark 5' } });
+    await screen.findByText('5');
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(window.api.stageItem).toHaveBeenCalledWith('bible', 41, 5));
+    expect(onStaged).toHaveBeenCalledWith(expect.objectContaining({ id: 9 }), null);
+  });
+
+  // Ambiguous case: "john 1" matches John, 1 John, 2 John and 3 John, each of which has a
+  // chapter 1 -- all four should render as their own section in one popover.
+  it('shows every matching book as its own section for an ambiguous book+chapter search', async () => {
+    const JOHN_B = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT', sortOrder: 43 };
+    const FIRST_JOHN = { id: 8, translation: 'KJV', sourceBookId: 44, name: '1 John', testament: 'NT', sortOrder: 44 };
+    (window.api.findBibleBooks as any).mockImplementation((q: string) =>
+      q === 'john' ? Promise.resolve([JOHN_B, FIRST_JOHN]) : Promise.resolve([])
+    );
+    (window.api.getChaptersForBook as any).mockImplementation((id: number) =>
+      id === 7 ? Promise.resolve([1, 2, 3]) : Promise.resolve([1, 2, 3, 4, 5])
+    );
+
+    render(<SearchPanel translation="KJV" onStaged={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'john 1' } });
+
+    await waitFor(() => expect(window.api.getChaptersForBook).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(window.api.getChaptersForBook).toHaveBeenCalledWith(8));
+    await waitFor(() => expect(screen.getByText('John')).toBeInTheDocument());
+    expect(screen.getByText('1 John')).toBeInTheDocument();
+  });
 });

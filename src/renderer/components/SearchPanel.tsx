@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BibleBook, StagedItem } from '../../shared/types';
+import { parseBookChapterQuery } from '../searchQuery';
 
 type Mode = 'bible' | 'song';
 type SubMode = 'browse' | 'content';
@@ -43,6 +44,11 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
   const [songs, setSongs] = useState<{ id: number; title: string }[]>([]);
   const [selectedBook, setSelectedBook] = useState<BibleBook | null>(null);
   const [chapters, setChapters] = useState<number[]>([]);
+  // Populated when the query parses out a trailing chapter number (e.g. "mark 5"): one
+  // entry per matched book, holding just the chapters whose number starts with that
+  // digit string, exact match first. Drives the grouped book+chapter view that lets the
+  // operator skip the book-list click-through.
+  const [chapterMatches, setChapterMatches] = useState<{ book: BibleBook; chapters: number[] }[]>([]);
   const [contentResults, setContentResults] = useState<ContentResult[]>([]);
   // Which result the keyboard (arrow keys / Enter) currently targets in whichever list is
   // showing. Reset to the top whenever the visible list changes underneath it.
@@ -69,6 +75,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
   useEffect(() => {
     setSelectedBook(null);
     setChapters([]);
+    setChapterMatches([]);
     setContentResults([]);
     setBooks([]);
     setSongs([]);
@@ -81,9 +88,33 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
       const requestId = ++searchSeq.current;
       const isStale = () => requestId !== searchSeq.current;
       if (subMode === 'browse' && mode === 'bible') {
-        window.api.findBibleBooks(query, translation).then((results) => {
+        const { bookQuery, chapterQuery } = parseBookChapterQuery(query);
+        window.api.findBibleBooks(bookQuery, translation).then(async (results) => {
           if (isStale()) return;
           setBooks(results);
+          if (chapterQuery === null || results.length === 0) {
+            setChapterMatches([]);
+            setSearching(false);
+            return;
+          }
+          const perBook = await Promise.all(
+            results.map((b) => window.api.getChaptersForBook(b.id).then((chapters) => ({ book: b, chapters })))
+          );
+          if (isStale()) return;
+          const matches = perBook
+            .map(({ book, chapters }) => ({
+              book,
+              chapters: chapters
+                .filter((c) => String(c).startsWith(chapterQuery))
+                .sort((a, b) => {
+                  const aExact = a === Number(chapterQuery);
+                  const bExact = b === Number(chapterQuery);
+                  if (aExact !== bExact) return aExact ? -1 : 1;
+                  return a - b;
+                }),
+            }))
+            .filter((m) => m.chapters.length > 0);
+          setChapterMatches(matches);
           setSearching(false);
         });
       } else if (subMode === 'browse' && mode === 'song') {
@@ -146,37 +177,59 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
     setChapters(chaptersForBook);
   }
 
+  function stageChapter(book: BibleBook, chapter: number) {
+    return window.api.stageItem('bible', book.id, chapter).then((item) => {
+      onStaged(item, null);
+      setQuery('');
+    });
+  }
+
+  // Flattens the per-book chapterMatches groups into the same {key, onSelect} shape as
+  // every other result list, in the order they render: book by book, chapters within a
+  // book exact-match-first (see the sort in the search effect above).
+  const chapterMatchResults = chapterMatches.flatMap(({ book, chapters }) =>
+    chapters.map((c) => ({ key: `${book.id}-${c}`, onSelect: () => stageChapter(book, c) }))
+  );
+
   // A single flat list of whatever is currently on screen, so Enter/arrow keys can
-  // operate the same way regardless of which of the four views (books, chapters, songs,
-  // content matches) is showing.
+  // operate the same way regardless of which of the five views (books, chapter-matches,
+  // chapters, songs, content matches) is showing.
   const activeResults: { key: string | number; onSelect: () => void }[] =
     subMode === 'content'
       ? contentResults.map((r, i) => ({ key: i, onSelect: r.onSelect }))
       : mode === 'bible' && selectedBook
-        ? chapters.map((c) => ({
-            key: c,
-            onSelect: () =>
-              window.api.stageItem('bible', selectedBook.id, c).then((item) => {
-                onStaged(item, null);
-                setQuery('');
-              }),
-          }))
-        : mode === 'bible'
-          ? books.map((b) => ({ key: b.id, onSelect: () => selectBook(b) }))
-          : songs.map((s) => ({
-              key: s.id,
-              onSelect: () =>
-                window.api.stageItem('song', s.id, null).then((item) => {
-                  onStaged(item, null);
-                  setQuery('');
-                }),
-            }));
+        ? chapters.map((c) => ({ key: c, onSelect: () => stageChapter(selectedBook, c) }))
+        : mode === 'bible' && chapterMatches.length > 0
+          ? chapterMatchResults
+          : mode === 'bible'
+            ? books.map((b) => ({ key: b.id, onSelect: () => selectBook(b) }))
+            : songs.map((s) => ({
+                key: s.id,
+                onSelect: () =>
+                  window.api.stageItem('song', s.id, null).then((item) => {
+                    onStaged(item, null);
+                    setQuery('');
+                  }),
+              }));
 
   useEffect(() => {
     setHighlighted(0);
-  }, [books, songs, chapters, contentResults, selectedBook]);
+  }, [books, songs, chapters, contentResults, selectedBook, chapterMatches]);
 
   const safeHighlighted = Math.min(highlighted, Math.max(activeResults.length - 1, 0));
+
+  // When "mark 5" resolves to exactly one book with an exact chapter-5 match, Enter
+  // should stage it straight away rather than whatever the arrow keys happen to be
+  // sitting on. With more than one exact match (e.g. "john 1" across John/1 John/2
+  // John/3 John) there is no single obvious pick, so Enter falls back to the normal
+  // highlighted-item behavior below.
+  const chapterQueryValue = parseBookChapterQuery(query).chapterQuery;
+  const exactChapterMatches =
+    chapterQueryValue === null
+      ? []
+      : chapterMatches
+          .filter(({ chapters }) => chapters[0] === Number(chapterQueryValue))
+          .map(({ book, chapters }) => ({ book, chapter: chapters[0] }));
 
   function onInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape' && isOpen) {
@@ -194,6 +247,11 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
       setHighlighted((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      if (exactChapterMatches.length === 1) {
+        const { book, chapter } = exactChapterMatches[0];
+        stageChapter(book, chapter);
+        return;
+      }
       activeResults[safeHighlighted]?.onSelect();
     }
   }
@@ -280,7 +338,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
 
       {isOpen && (
         <div className="search-popover" role="listbox" aria-label="Search results">
-          {subMode === 'browse' && mode === 'bible' && !selectedBook && (
+          {subMode === 'browse' && mode === 'bible' && !selectedBook && chapterMatches.length === 0 && (
             <>
               <div className="search-popover__section">
                 <span className="search-popover__section-label">Books</span>
@@ -298,6 +356,41 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
                   </li>
                 ))}
               </ul>
+            </>
+          )}
+
+          {/* A trailing chapter number in the query (e.g. "mark 5") skips the book-list
+              click-through: each matched book renders its own filtered chapter grid
+              directly, exact match highlighted, so "john 1" can show John/1 John/2
+              John/3 John chapter 1 side by side without an extra click. */}
+          {subMode === 'browse' && mode === 'bible' && !selectedBook && chapterMatches.length > 0 && (
+            <>
+              <div className="search-popover__section">
+                <span className="search-popover__section-label">Books</span>
+              </div>
+              {chapterMatches.map(({ book, chapters }) => (
+                <div key={book.id} className="search-popover__book-group">
+                  <div className="search-popover__book">
+                    <span className="search-popover__book-title">{book.name}</span>
+                  </div>
+                  <div className="chapter-grid">
+                    {chapters.map((c) => {
+                      const flatIndex = chapterMatchResults.findIndex((r) => r.key === `${book.id}-${c}`);
+                      const isExact = c === Number(chapterQueryValue);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          className={`chapter-cell ${flatIndex === safeHighlighted ? 'chapter-cell--active' : ''} ${isExact ? 'chapter-cell--exact' : ''}`}
+                          onClick={() => stageChapter(book, c)}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </>
           )}
 

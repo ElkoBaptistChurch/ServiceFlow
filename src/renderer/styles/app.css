@@ -695,6 +695,19 @@ button {
   font-weight: 700;
 }
 
+/* The chapter that exactly matches a "book chapter" search like "mark 5" -- the default
+   pick when several prefix matches (5, 50, 51...) are shown side by side. */
+.chapter-cell--exact {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.search-popover__book-group + .search-popover__book-group {
+  margin-top: 4px;
+}
+
 .search-popover__list {
   list-style: none;
   margin: 0;
