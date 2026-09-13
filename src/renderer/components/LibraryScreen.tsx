@@ -6,7 +6,11 @@ import SongLibraryPanel from './SongLibraryPanel';
 const CONTENT_TYPES = [{ key: 'songs', label: 'Songs' }] as const;
 type ContentTypeKey = (typeof CONTENT_TYPES)[number]['key'];
 
-export default function LibraryScreen() {
+export default function LibraryScreen({
+  registerDirtyGuard,
+}: {
+  registerDirtyGuard?: (guard: () => boolean) => void;
+}) {
   const [contentType, setContentType] = useState<ContentTypeKey>('songs');
 
   return (
@@ -24,7 +28,9 @@ export default function LibraryScreen() {
           </button>
         ))}
       </nav>
-      <div className="library-page__panel">{contentType === 'songs' && <SongLibraryPanel />}</div>
+      <div className="library-page__panel">
+        {contentType === 'songs' && <SongLibraryPanel registerDirtyGuard={registerDirtyGuard} />}
+      </div>
     </div>
   );
 }

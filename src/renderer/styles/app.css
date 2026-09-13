@@ -1409,6 +1409,17 @@ button {
   align-self: flex-start;
 }
 
+.song-library__meta-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.song-library__save {
+  background: var(--accent);
+}
+
 /* ---------- Narrow / docked layout (half-screen, ~512px wide) ----------
    Below this the sidebar's 340px fixed width plus a side-by-side content pane no longer
    fits: the operate screen stacks the service list above the content pane instead, each

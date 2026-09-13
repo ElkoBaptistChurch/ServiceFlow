@@ -7,17 +7,33 @@ function autoSizeTextarea(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-function reorder(blocks: SongBlock[], fromIndex: number, toIndex: number): SongBlock[] {
-  const reordered = blocks.slice();
+// A block that may not exist in the DB yet: id is null until Save creates it. `key` is a
+// stable client-side identity (React keys, drag/drop) that survives across that save.
+type EditableBlock = Omit<SongBlock, 'id'> & { id: number | null; key: string };
+
+type Snapshot = { song: Song; blocks: EditableBlock[] };
+
+function toEditable(block: SongBlock): EditableBlock {
+  return { ...block, key: `db-${block.id}` };
+}
+
+function reorder<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+  const reordered = items.slice();
   const [moved] = reordered.splice(fromIndex, 1);
   reordered.splice(toIndex, 0, moved);
   return reordered;
 }
 
-export default function SongLibraryPanel() {
+export default function SongLibraryPanel({
+  registerDirtyGuard,
+}: {
+  registerDirtyGuard?: (guard: () => boolean) => void;
+}) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
-  const [blocks, setBlocks] = useState<SongBlock[]>([]);
+  const [blocks, setBlocks] = useState<EditableBlock[]>([]);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,22 +47,38 @@ export default function SongLibraryPanel() {
     return () => clearTimeout(timeout);
   }, [searchQuery]);
 
+  function confirmDiscard(title: string): boolean {
+    if (!dirty) return true;
+    return window.confirm(`You have unsaved changes to "${title}". Discard them and switch songs?`);
+  }
+
+  useEffect(() => {
+    if (!registerDirtyGuard) return;
+    registerDirtyGuard(() => {
+      if (!dirty || !selectedSong) return true;
+      return confirmDiscard(selectedSong.title);
+    });
+  }, [registerDirtyGuard, dirty, selectedSong]);
+
   function openSong(song: Song) {
+    if (selectedSong && !confirmDiscard(selectedSong.title)) return;
     setSelectedSong(song);
-    window.api.getBlocksForSong(song.id).then(setBlocks);
+    window.api.getBlocksForSong(song.id).then((loaded) => {
+      const editable = loaded.map(toEditable);
+      setBlocks(editable);
+      setSnapshot({ song, blocks: editable });
+      setDirty(false);
+    });
   }
 
   async function createNewSong() {
+    if (selectedSong && !confirmDiscard(selectedSong.title)) return;
     const song = await window.api.createSong('New Song', null);
     await refreshSongs();
-    openSong(song);
-  }
-
-  async function saveSongMeta(title: string, ccliNumber: string | null) {
-    if (!selectedSong) return;
-    await window.api.updateSong(selectedSong.id, title, ccliNumber);
-    setSelectedSong({ ...selectedSong, title, ccliNumber });
-    refreshSongs();
+    setSelectedSong(song);
+    setBlocks([]);
+    setSnapshot({ song, blocks: [] });
+    setDirty(false);
   }
 
   async function deleteSelectedSong() {
@@ -55,36 +87,99 @@ export default function SongLibraryPanel() {
     await window.api.deleteSong(selectedSong.id);
     setSelectedSong(null);
     setBlocks([]);
+    setSnapshot(null);
+    setDirty(false);
     refreshSongs();
   }
 
-  async function addVerse() {
+  function updateTitle(title: string) {
     if (!selectedSong) return;
-    const block = await window.api.addSongBlock(selectedSong.id, `Verse ${blocks.length + 1}`, '');
-    setBlocks([...blocks, block]);
+    setSelectedSong({ ...selectedSong, title });
+    setDirty(true);
   }
 
-  async function saveBlock(id: number, label: string, text: string) {
-    await window.api.updateSongBlock(id, label, text);
-    setBlocks((current) => current.map((b) => (b.id === id ? { ...b, label, text } : b)));
+  function updateCcli(ccliNumber: string) {
+    if (!selectedSong) return;
+    setSelectedSong({ ...selectedSong, ccliNumber: ccliNumber || null });
+    setDirty(true);
   }
 
-  async function deleteBlock(id: number) {
-    await window.api.deleteSongBlock(id);
-    setBlocks((current) => current.filter((b) => b.id !== id));
+  function addVerse() {
+    setBlocks((current) => [
+      ...current,
+      {
+        id: null,
+        key: crypto.randomUUID(),
+        songId: selectedSong?.id ?? 0,
+        label: `Verse ${current.length + 1}`,
+        text: '',
+        displayOrder: current.length,
+      },
+    ]);
+    setDirty(true);
   }
 
-  async function handleBlockDrop(targetIndex: number) {
+  function updateBlockLabel(key: string, label: string) {
+    setBlocks((current) => current.map((b) => (b.key === key ? { ...b, label } : b)));
+    setDirty(true);
+  }
+
+  function updateBlockText(key: string, text: string) {
+    setBlocks((current) => current.map((b) => (b.key === key ? { ...b, text } : b)));
+    setDirty(true);
+  }
+
+  function deleteBlock(key: string) {
+    setBlocks((current) => current.filter((b) => b.key !== key));
+    setDirty(true);
+  }
+
+  function handleBlockDrop(targetIndex: number) {
     const fromIndex = draggedIndex;
     setDraggedIndex(null);
     setDragOverIndex(null);
-    if (!selectedSong || fromIndex === null || fromIndex === targetIndex) return;
-    const reordered = reorder(blocks, fromIndex, targetIndex);
-    setBlocks(reordered);
+    if (fromIndex === null || fromIndex === targetIndex) return;
+    setBlocks((current) => reorder(current, fromIndex, targetIndex));
+    setDirty(true);
+  }
+
+  async function saveChanges() {
+    if (!selectedSong || !snapshot) return;
+
+    if (selectedSong.title !== snapshot.song.title || selectedSong.ccliNumber !== snapshot.song.ccliNumber) {
+      await window.api.updateSong(selectedSong.id, selectedSong.title, selectedSong.ccliNumber);
+    }
+
+    const currentIds = new Set(blocks.filter((b) => b.id !== null).map((b) => b.id));
+    for (const old of snapshot.blocks) {
+      if (old.id !== null && !currentIds.has(old.id)) {
+        await window.api.deleteSongBlock(old.id);
+      }
+    }
+
+    const savedBlocks: EditableBlock[] = [];
+    for (const block of blocks) {
+      if (block.id === null) {
+        const created = await window.api.addSongBlock(selectedSong.id, block.label, block.text);
+        savedBlocks.push({ ...created, key: `db-${created.id}` });
+      } else {
+        const original = snapshot.blocks.find((b) => b.id === block.id);
+        if (!original || original.label !== block.label || original.text !== block.text) {
+          await window.api.updateSongBlock(block.id, block.label, block.text);
+        }
+        savedBlocks.push(block);
+      }
+    }
+
     await window.api.reorderSongBlocks(
       selectedSong.id,
-      reordered.map((b) => b.id)
+      savedBlocks.map((b) => b.id as number)
     );
+
+    setBlocks(savedBlocks);
+    setSnapshot({ song: selectedSong, blocks: savedBlocks });
+    setDirty(false);
+    refreshSongs();
   }
 
   return (
@@ -126,9 +221,8 @@ export default function SongLibraryPanel() {
               <input
                 id="song-title"
                 className="field-select"
-                defaultValue={selectedSong.title}
-                key={`title-${selectedSong.id}`}
-                onBlur={(e) => saveSongMeta(e.target.value, selectedSong.ccliNumber)}
+                value={selectedSong.title}
+                onChange={(e) => updateTitle(e.target.value)}
               />
             </div>
             <div className="song-library__meta-field song-library__meta-field--ccli">
@@ -138,23 +232,32 @@ export default function SongLibraryPanel() {
               <input
                 id="song-ccli"
                 className="field-select"
-                defaultValue={selectedSong.ccliNumber ?? ''}
-                key={`ccli-${selectedSong.id}`}
-                onBlur={(e) => saveSongMeta(selectedSong.title, e.target.value || null)}
+                value={selectedSong.ccliNumber ?? ''}
+                onChange={(e) => updateCcli(e.target.value)}
               />
             </div>
-            <button
-              type="button"
-              className="btn-pill btn-pill--danger btn-pill--small"
-              onClick={deleteSelectedSong}
-            >
-              Delete song
-            </button>
+            <div className="song-library__meta-actions">
+              <button
+                type="button"
+                className="btn-pill btn-pill--danger btn-pill--small"
+                onClick={deleteSelectedSong}
+              >
+                Delete song
+              </button>
+              <button
+                type="button"
+                className="btn-pill btn-pill--small song-library__save"
+                disabled={!dirty}
+                onClick={saveChanges}
+              >
+                Save
+              </button>
+            </div>
           </div>
           <ul className="song-library__blocks">
             {blocks.map((block, index) => (
               <li
-                key={block.id}
+                key={block.key}
                 className={[
                   'song-block-row',
                   dragOverIndex === index ? 'song-block-row--drag-over' : '',
@@ -190,22 +293,22 @@ export default function SongLibraryPanel() {
                 <input
                   className="field-select song-block-row__label"
                   aria-label={`Block ${index + 1} label`}
-                  defaultValue={block.label}
-                  onBlur={(e) => saveBlock(block.id, e.target.value, block.text)}
+                  value={block.label}
+                  onChange={(e) => updateBlockLabel(block.key, e.target.value)}
                 />
                 <textarea
                   className="song-block-row__text"
                   aria-label={`Block ${index + 1} text`}
-                  defaultValue={block.text}
+                  value={block.text}
                   ref={autoSizeTextarea}
                   onInput={(e) => autoSizeTextarea(e.currentTarget)}
-                  onBlur={(e) => saveBlock(block.id, block.label, e.target.value)}
+                  onChange={(e) => updateBlockText(block.key, e.target.value)}
                 />
                 <button
                   type="button"
                   className="btn-pill btn-pill--danger btn-pill--small"
                   aria-label="Delete block"
-                  onClick={() => deleteBlock(block.id)}
+                  onClick={() => deleteBlock(block.key)}
                 >
                   ×
                 </button>

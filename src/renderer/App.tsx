@@ -39,6 +39,21 @@ export default function App() {
     closeSearchRef.current = close;
   }, []);
 
+  // Set by LibraryScreen/SongLibraryPanel; returns false (and shows its own confirm) when
+  // the song editor has unsaved changes the operator hasn't confirmed discarding.
+  const libraryDirtyGuardRef = useRef<() => boolean>(() => true);
+  const registerLibraryDirtyGuard = useCallback((guard: () => boolean) => {
+    libraryDirtyGuardRef.current = guard;
+  }, []);
+
+  const changeView = useCallback(
+    (next: 'operate' | 'library' | 'settings') => {
+      if (view === 'library' && next !== 'library' && !libraryDirtyGuardRef.current()) return;
+      setView(next);
+    },
+    [view]
+  );
+
   const refreshStagedItems = useCallback(() => {
     return window.api.getStagedItems().then((loaded) => {
       setItems(loaded);
@@ -192,19 +207,19 @@ export default function App() {
         <nav className="nav-tabs">
           <button
             className={`nav-tab ${view === 'operate' ? 'nav-tab--active' : ''}`}
-            onClick={() => setView('operate')}
+            onClick={() => changeView('operate')}
           >
             Operate
           </button>
           <button
             className={`nav-tab ${view === 'library' ? 'nav-tab--active' : ''}`}
-            onClick={() => setView('library')}
+            onClick={() => changeView('library')}
           >
             Library
           </button>
           <button
             className={`nav-tab ${view === 'settings' ? 'nav-tab--active' : ''}`}
-            onClick={() => setView('settings')}
+            onClick={() => changeView('settings')}
           >
             Settings
           </button>
@@ -256,7 +271,7 @@ export default function App() {
       {view === 'settings' ? (
         <SettingsScreen onTranslationChange={setTranslation} />
       ) : view === 'library' ? (
-        <LibraryScreen />
+        <LibraryScreen registerDirtyGuard={registerLibraryDirtyGuard} />
       ) : (
         <div className="app-body">
           <div className="sidebar">
