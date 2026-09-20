@@ -9,9 +9,13 @@ files:
 asarUnpack:
   - '**/*.node'
 win:
-  target: nsis
+  target:
+    - nsis
+    - portable
   artifactName: '${productName}-Setup-${version}.${ext}'
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
+portable:
+  artifactName: '${productName}-${version}.${ext}'
