@@ -1153,29 +1153,198 @@ button {
   font-family: inherit;
 }
 
-.style-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.style-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
 }
 
-.style-btn {
-  appearance: none;
-  cursor: pointer;
-  padding: 8px 16px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 500;
-  background: var(--surface);
+.style-card {
   border: 1px solid var(--border-strong);
-  color: var(--ink-3);
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.style-btn[aria-pressed='true'] {
-  background: var(--ink);
+.style-card:hover {
+  border-color: var(--ink-3);
+}
+
+.style-card[aria-pressed='true'] {
   border-color: var(--ink);
-  color: var(--bg);
+  box-shadow: 0 0 0 2px var(--ink) inset;
+}
+
+.style-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
   font-weight: 600;
+  color: var(--ink);
+}
+
+.style-card__check {
+  color: var(--live, #2ecc71);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.style-card__preview-wrap {
+  position: relative;
+}
+
+.style-card__zoom {
+  appearance: none;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 2;
+}
+
+.style-card__preview-wrap:hover .style-card__zoom,
+.style-card__zoom:focus-visible {
+  opacity: 1;
+}
+
+/* ---------- Style preview (mirrors src/output/output.css template presets) ---------- */
+
+.style-preview {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #1c1f26, #2a2f3a);
+}
+
+.style-preview--card {
+  height: 96px;
+}
+
+.style-preview--modal {
+  height: 240px;
+}
+
+.style-preview__stage {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 480px;
+  height: 220px;
+  padding: 32px 48px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  transform-origin: bottom left;
+}
+
+.style-preview__text {
+  font-size: 42px;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  line-height: 1.3;
+  white-space: pre-line;
+  overflow: hidden;
+}
+
+.style-preview__reference {
+  margin-top: 12px;
+  font-size: 22px;
+  font-weight: 400;
+  color: #f0d060;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.style-preview__stage.bible-classic .style-preview__text {
+  border-left: 6px solid #f0d060;
+  padding-left: 20px;
+}
+
+.style-preview__stage.song-classic .style-preview__text {
+  border-left: 6px solid #6fb2f0;
+  padding-left: 20px;
+}
+
+.style-preview__stage.bible-minimal .style-preview__text,
+.style-preview__stage.song-minimal .style-preview__text {
+  font-size: 34px;
+}
+
+.style-preview__stage.bible-minimal .style-preview__reference,
+.style-preview__stage.song-minimal .style-preview__reference {
+  font-size: 18px;
+}
+
+.style-preview__stage.bible-bold,
+.style-preview__stage.song-bold {
+  background: rgba(10, 10, 20, 0.55);
+}
+
+.style-preview__stage.bible-bold .style-preview__text,
+.style-preview__stage.song-bold .style-preview__text {
+  font-size: 48px;
+}
+
+.style-preview__stage.bible-centered,
+.style-preview__stage.song-centered {
+  text-align: center;
+}
+
+/* ---------- Style preview modal ---------- */
+
+.style-preview-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.style-preview-modal {
+  background: var(--surface);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  width: min(560px, 90vw);
+}
+
+.style-preview-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.style-preview-modal__close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--ink-3);
+  line-height: 1;
+  padding: 4px 8px;
 }
 
 .import-summary {

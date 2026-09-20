@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ContentType, ImportError, ImportSummary, OutputStyle } from '../../shared/types';
+import StyleCard from './StyleCard';
+import StylePreviewModal from './StylePreviewModal';
 
 // Importers pass raw SQLite error text straight through as `reason` alongside their own
 // hand-authored sentences (e.g. "song has no lyrics data"). A volunteer can't parse
@@ -31,6 +33,7 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
   // volunteer hand-transcribing an IP-and-port URL into OBS is exactly the situation a
   // silent no-op (or a silent throw, if navigator.clipboard is unavailable) would hurt.
   const [justCopied, setJustCopied] = useState<'local' | 'lan' | null>(null);
+  const [zoomStyle, setZoomStyle] = useState<{ contentType: ContentType; style: OutputStyle } | null>(null);
 
   async function copyUrl(kind: 'local' | 'lan', url: string) {
     try {
@@ -98,17 +101,15 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
     return (
       <section className="settings-section">
         <h3 className="settings-section__title">{contentType === 'bible' ? 'Bible style' : 'Song style'}</h3>
-        <div className="style-row">
+        <div className="style-grid">
           {styles.map((s) => (
-            <button
+            <StyleCard
               key={s.id}
-              className="style-btn"
-              aria-pressed={s.isActive}
-              aria-label={`${contentType} ${s.name}`}
-              onClick={() => chooseStyle(contentType, s.id)}
-            >
-              {s.name} {s.isActive ? '(active)' : ''}
-            </button>
+              contentType={contentType}
+              style={s}
+              onSelect={(styleId) => chooseStyle(contentType, styleId)}
+              onZoom={(style) => setZoomStyle({ contentType, style })}
+            />
           ))}
         </div>
       </section>
@@ -116,6 +117,7 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
   }
 
   return (
+    <>
     <div className="settings-page">
       <h2 className="settings-page__title">Settings</h2>
       <section className="settings-section">
@@ -221,5 +223,13 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
         )}
       </section>
     </div>
+    {zoomStyle && (
+      <StylePreviewModal
+        contentType={zoomStyle.contentType}
+        style={zoomStyle.style}
+        onClose={() => setZoomStyle(null)}
+      />
+    )}
+    </>
   );
 }
