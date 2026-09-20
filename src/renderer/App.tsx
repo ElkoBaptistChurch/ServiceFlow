@@ -39,17 +39,21 @@ export default function App() {
     closeSearchRef.current = close;
   }, []);
 
-  // Set by LibraryScreen/SongLibraryPanel; returns false (and shows its own confirm) when
-  // the song editor has unsaved changes the operator hasn't confirmed discarding.
-  const libraryDirtyGuardRef = useRef<() => boolean>(() => true);
-  const registerLibraryDirtyGuard = useCallback((guard: () => boolean) => {
+  // Set by LibraryScreen/SongLibraryPanel; calls `proceed` once the song editor's own
+  // (in-app, not window.confirm()) discard dialog is resolved, or immediately if there are
+  // no unsaved changes to confirm.
+  const libraryDirtyGuardRef = useRef<(proceed: () => void) => void>((proceed) => proceed());
+  const registerLibraryDirtyGuard = useCallback((guard: (proceed: () => void) => void) => {
     libraryDirtyGuardRef.current = guard;
   }, []);
 
   const changeView = useCallback(
     (next: 'operate' | 'library' | 'settings') => {
-      if (view === 'library' && next !== 'library' && !libraryDirtyGuardRef.current()) return;
-      setView(next);
+      if (view === 'library' && next !== 'library') {
+        libraryDirtyGuardRef.current(() => setView(next));
+      } else {
+        setView(next);
+      }
     },
     [view]
   );

@@ -13,6 +13,11 @@ type EditableBlock = Omit<SongBlock, 'id'> & { id: number | null; key: string };
 
 type Snapshot = { song: Song; blocks: EditableBlock[] };
 
+// Renders as an in-app dialog instead of window.confirm(): a native dialog leaves the
+// renderer without keyboard focus afterward on Linux, so nothing types until an unrelated
+// click resyncs it (see the discard-changes flow this replaced).
+type ConfirmState = { message: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void };
+
 function toEditable(block: SongBlock): EditableBlock {
   return { ...block, key: `db-${block.id}` };
 }
@@ -45,7 +50,7 @@ function errorMessage(err: unknown): string {
 export default function SongLibraryPanel({
   registerDirtyGuard,
 }: {
-  registerDirtyGuard?: (guard: () => boolean) => void;
+  registerDirtyGuard?: (guard: (proceed: () => void) => void) => void;
 }) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
@@ -56,6 +61,7 @@ export default function SongLibraryPanel({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const focusTitleOnOpen = useRef(false);
 
@@ -88,64 +94,95 @@ export default function SongLibraryPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   });
 
-  function confirmDiscard(title: string): boolean {
-    if (!dirty) return true;
-    return window.confirm(`You have unsaved changes to "${title}". Discard them and switch songs?`);
+  // Runs `proceed` once the operator confirms discarding, or immediately if there's nothing
+  // unsaved to discard. Always an in-app dialog, never window.confirm() (see ConfirmState).
+  function requestDiscardConfirm(proceed: () => void) {
+    if (!dirty || !selectedSong) {
+      proceed();
+      return;
+    }
+    setConfirmState({
+      message: `You have unsaved changes to "${selectedSong.title}". Discard them and switch songs?`,
+      confirmLabel: 'Discard',
+      onConfirm: () => {
+        setConfirmState(null);
+        proceed();
+      },
+      onCancel: () => setConfirmState(null),
+    });
   }
 
   useEffect(() => {
     if (!registerDirtyGuard) return;
-    registerDirtyGuard(() => {
-      if (!dirty || !selectedSong) return true;
-      return confirmDiscard(selectedSong.title);
-    });
+    registerDirtyGuard(requestDiscardConfirm);
   }, [registerDirtyGuard, dirty, selectedSong]);
 
-  async function openSong(song: Song) {
-    if (selectedSong && !confirmDiscard(selectedSong.title)) return;
-    setError(null);
-    setSelectedSong(song);
-    try {
-      const loaded = await window.api.getBlocksForSong(song.id);
-      const editable = loaded.map(toEditable);
-      setBlocks(editable);
-      setSnapshot({ song, blocks: editable });
-      setDirty(false);
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }
-
-  async function createNewSong() {
-    if (selectedSong && !confirmDiscard(selectedSong.title)) return;
-    setError(null);
-    try {
-      const song = await window.api.createSong('New Song', null);
-      await refreshSongs();
-      focusTitleOnOpen.current = true;
+  function openSong(song: Song) {
+    requestDiscardConfirm(async () => {
+      setError(null);
       setSelectedSong(song);
-      setBlocks([]);
-      setSnapshot({ song, blocks: [] });
-      setDirty(false);
-    } catch (err) {
-      setError(errorMessage(err));
+      try {
+        const loaded = await window.api.getBlocksForSong(song.id);
+        const editable = loaded.map(toEditable);
+        setBlocks(editable);
+        setSnapshot({ song, blocks: editable });
+        setDirty(false);
+      } catch (err) {
+        setError(errorMessage(err));
+      }
+    });
+  }
+
+  async function uniqueNewSongTitle(): Promise<string> {
+    let n = 1;
+    for (;;) {
+      const candidate = n === 1 ? 'New Song' : `New Song ${n}`;
+      const duplicate = await window.api.findDuplicateSong(candidate, null, -1);
+      if (!duplicate) return candidate;
+      n++;
     }
   }
 
-  async function deleteSelectedSong() {
+  function createNewSong() {
+    requestDiscardConfirm(async () => {
+      setError(null);
+      try {
+        const title = await uniqueNewSongTitle();
+        const song = await window.api.createSong(title, null);
+        await refreshSongs();
+        focusTitleOnOpen.current = true;
+        setSelectedSong(song);
+        setBlocks([]);
+        setSnapshot({ song, blocks: [] });
+        setDirty(false);
+      } catch (err) {
+        setError(errorMessage(err));
+      }
+    });
+  }
+
+  function deleteSelectedSong() {
     if (!selectedSong) return;
-    if (!window.confirm(`Delete "${selectedSong.title}"? This cannot be undone.`)) return;
-    setError(null);
-    try {
-      await window.api.deleteSong(selectedSong.id);
-      setSelectedSong(null);
-      setBlocks([]);
-      setSnapshot(null);
-      setDirty(false);
-      refreshSongs();
-    } catch (err) {
-      setError(errorMessage(err));
-    }
+    const title = selectedSong.title;
+    setConfirmState({
+      message: `Delete "${title}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        setConfirmState(null);
+        setError(null);
+        try {
+          await window.api.deleteSong(selectedSong.id);
+          setSelectedSong(null);
+          setBlocks([]);
+          setSnapshot(null);
+          setDirty(false);
+          refreshSongs();
+        } catch (err) {
+          setError(errorMessage(err));
+        }
+      },
+      onCancel: () => setConfirmState(null),
+    });
   }
 
   function updateTitle(title: string) {
@@ -261,6 +298,30 @@ export default function SongLibraryPanel({
 
   return (
     <div className="song-library">
+      {confirmState && (
+        <div className="song-library__confirm-overlay" role="presentation" onClick={confirmState.onCancel}>
+          <div
+            className="song-library__confirm-box"
+            role="alertdialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>{confirmState.message}</p>
+            <div className="song-library__confirm-actions">
+              <button type="button" className="btn-pill btn-pill--small" onClick={confirmState.onCancel}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-pill btn-pill--danger btn-pill--small"
+                onClick={confirmState.onConfirm}
+              >
+                {confirmState.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {error && (
         <div className="song-library__error" role="alert">
           <span>{error}</span>

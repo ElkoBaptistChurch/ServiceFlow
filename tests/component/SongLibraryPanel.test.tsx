@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import SongLibraryPanel from '../../src/renderer/components/SongLibraryPanel';
 
 const songs = [
@@ -149,70 +149,78 @@ describe('SongLibraryPanel', () => {
   });
 
   it('deletes the song after confirmation', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<SongLibraryPanel />);
     fireEvent.click(await screen.findByText('Amazing Grace'));
     fireEvent.click(await screen.findByRole('button', { name: /delete song/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^delete$/i }));
     await waitFor(() => expect(window.api.deleteSong).toHaveBeenCalledWith(1));
   });
 
   it('does not delete the song when the confirmation is declined', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(<SongLibraryPanel />);
     fireEvent.click(await screen.findByText('Amazing Grace'));
     fireEvent.click(await screen.findByRole('button', { name: /delete song/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^cancel$/i }));
     expect(window.api.deleteSong).not.toHaveBeenCalled();
   });
 
   it('warns before switching songs with unsaved changes, and stays put if declined', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(<SongLibraryPanel />);
     fireEvent.click(await screen.findByText('Amazing Grace'));
     const titleInput = await screen.findByDisplayValue('Amazing Grace');
     fireEvent.change(titleInput, { target: { value: 'Amazing Grace (Traditional)' } });
 
     fireEvent.click(screen.getByText('How Great Thou Art'));
-    expect(confirmSpy).toHaveBeenCalled();
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
     expect(screen.getByDisplayValue('Amazing Grace (Traditional)')).toBeInTheDocument();
+    expect(window.api.getBlocksForSong).not.toHaveBeenCalledWith(2);
   });
 
   it('discards unsaved changes and switches songs when the warning is accepted', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<SongLibraryPanel />);
     fireEvent.click(await screen.findByText('Amazing Grace'));
     const titleInput = await screen.findByDisplayValue('Amazing Grace');
     fireEvent.change(titleInput, { target: { value: 'Amazing Grace (Traditional)' } });
 
     fireEvent.click(screen.getByText('How Great Thou Art'));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /^discard$/i }));
     await waitFor(() => expect(window.api.getBlocksForSong).toHaveBeenCalledWith(2));
     expect(window.api.updateSong).not.toHaveBeenCalled();
   });
 
   it('does not warn when switching songs with no unsaved changes', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(<SongLibraryPanel />);
     fireEvent.click(await screen.findByText('Amazing Grace'));
     await screen.findByDisplayValue('Amazing grace, how sweet the sound');
 
     fireEvent.click(screen.getByText('How Great Thou Art'));
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('reports dirty state through the registered guard, and clears it after Save', async () => {
-    let guard: (() => boolean) | undefined;
+    let guard: ((proceed: () => void) => void) | undefined;
     render(<SongLibraryPanel registerDirtyGuard={(fn) => (guard = fn)} />);
     fireEvent.click(await screen.findByText('Amazing Grace'));
     const titleInput = await screen.findByDisplayValue('Amazing Grace');
 
-    expect(guard!()).toBe(true);
+    const proceedWhenClean = vi.fn();
+    guard!(proceedWhenClean);
+    expect(proceedWhenClean).toHaveBeenCalled();
 
     fireEvent.change(titleInput, { target: { value: 'Amazing Grace (Traditional)' } });
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    expect(guard!()).toBe(false);
+    const proceedWhenDirty = vi.fn();
+    guard!(proceedWhenDirty);
+    expect(proceedWhenDirty).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
 
     clickSave();
     await waitFor(() => expect(window.api.updateSong).toHaveBeenCalled());
-    expect(guard!()).toBe(true);
+    const proceedAfterSave = vi.fn();
+    guard!(proceedAfterSave);
+    expect(proceedAfterSave).toHaveBeenCalled();
   });
 
   it('shows an error and does not clear dirty state when a save fails', async () => {

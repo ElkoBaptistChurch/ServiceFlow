@@ -9,7 +9,7 @@ type ContentTypeKey = (typeof CONTENT_TYPES)[number]['key'];
 export default function LibraryScreen({
   registerDirtyGuard,
 }: {
-  registerDirtyGuard?: (guard: () => boolean) => void;
+  registerDirtyGuard?: (guard: (proceed: () => void) => void) => void;
 }) {
   const [contentType, setContentType] = useState<ContentTypeKey>('songs');
 

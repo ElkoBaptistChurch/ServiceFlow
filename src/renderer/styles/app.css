@@ -1309,6 +1309,37 @@ button {
   font-weight: 700;
 }
 
+.song-library__confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.song-library__confirm-box {
+  width: min(360px, calc(100% - 48px));
+  padding: 18px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.song-library__confirm-box p {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.song-library__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .song-library__list {
   width: 260px;
   flex-shrink: 0;
