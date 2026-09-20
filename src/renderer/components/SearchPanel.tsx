@@ -318,7 +318,6 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
           className={`pill pill--ghost ${subMode === 'browse' ? 'pill--active' : ''}`}
           onClick={() => {
             setSubMode('browse');
-            setQuery('');
           }}
           aria-pressed={subMode === 'browse'}
         >
@@ -328,7 +327,6 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
           className={`pill pill--ghost ${subMode === 'content' ? 'pill--active' : ''}`}
           onClick={() => {
             setSubMode('content');
-            setQuery('');
           }}
           aria-pressed={subMode === 'content'}
         >
