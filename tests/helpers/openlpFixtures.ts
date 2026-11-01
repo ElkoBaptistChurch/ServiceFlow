@@ -34,9 +34,12 @@ export function createFixtureBibleDb(
   // real malformed-row shapes: a NULL book name, and a chapter/verse value SQLite's
   // loose INTEGER affinity stored as TEXT because it wasn't numeric to begin with.
   books: { id: number; name: string | null; testamentReferenceId: number; bookReferenceId?: number }[],
-  verses: { bookId: number; chapter: number | string; verse: number | string; text: string }[]
+  verses: { bookId: number; chapter: number | string; verse: number | string; text: string }[],
+  // Extra metadata rows (e.g. copyright), and the file name — OpenLP names files after
+  // the translation, and the adapter falls back to it when the metadata name is unusable.
+  opts: { metadata?: Record<string, string>; fileName?: string } = {}
 ): string {
-  const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-bible-')), 'bible.sqlite');
+  const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-bible-')), opts.fileName ?? 'bible.sqlite');
   const db = new Database(dbPath);
   db.exec(`
     CREATE TABLE metadata (key VARCHAR(255) NOT NULL PRIMARY KEY, value VARCHAR(255));
@@ -44,6 +47,9 @@ export function createFixtureBibleDb(
     CREATE TABLE verse (id INTEGER NOT NULL PRIMARY KEY, book_id INTEGER, chapter INTEGER, verse INTEGER, text TEXT);
   `);
   db.prepare(`INSERT INTO metadata (key, value) VALUES ('name', ?)`).run(translationName);
+  for (const [key, value] of Object.entries(opts.metadata ?? {})) {
+    db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run(key, value);
+  }
   const insertBook = db.prepare(
     `INSERT INTO book (id, book_reference_id, testament_reference_id, name) VALUES (?, ?, ?, ?)`
   );

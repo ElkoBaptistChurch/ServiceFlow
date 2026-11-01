@@ -1,177 +1,182 @@
 import path from 'path';
 import Database from 'better-sqlite3';
-import { ImportSourceSummary, Testament } from '../../shared/types';
+import { ImportError, ImportResult, TranslationInput, VerseTuple } from '../../../shared/types';
+import { upsertTranslation } from '../../db/bibleRepository';
+import { mapOpenlpBook, OpenlpBookRow } from './bookMap';
 
-function mapTestament(testamentReferenceId: number): Testament {
-  if (testamentReferenceId === 1) return 'OT';
-  if (testamentReferenceId === 2) return 'NT';
-  return 'AP';
+// Metadata names OpenLP Bible downloads commonly carry, mapped to the code ServiceFlow
+// uses. Importing OpenLP's KJV therefore lands on the same code as the bundled KJV and
+// updates it in place (plan open question 3).
+const KNOWN_TRANSLATION_NAMES: Record<string, string> = {
+  'kjv': 'KJV',
+  'king james version': 'KJV',
+  'king james bible': 'KJV',
+  'authorized version': 'KJV',
+  'authorised version': 'KJV',
+  'nkjv': 'NKJV',
+  'new king james version': 'NKJV',
+  'net': 'NET',
+  'new english translation': 'NET',
+  'net bible': 'NET',
+};
+
+// A trailing "(NET)"-style abbreviation, as in "New English Translation (NET)".
+const TRAILING_CODE = /\(([A-Za-z0-9-]{2,10})\)\s*$/;
+// A metadata name that is already a code: one short token, e.g. "ESV".
+const BARE_CODE = /^[A-Za-z0-9-]{2,10}$/;
+
+function codeFromLabel(label: string): string | undefined {
+  const known = KNOWN_TRANSLATION_NAMES[label.trim().toLowerCase()];
+  if (known) return known;
+  const trailing = TRAILING_CODE.exec(label);
+  if (trailing) return KNOWN_TRANSLATION_NAMES[trailing[1].toLowerCase()] ?? trailing[1].toUpperCase();
+  const withoutTrailing = label.replace(TRAILING_CODE, '').trim();
+  const knownWithout = KNOWN_TRANSLATION_NAMES[withoutTrailing.toLowerCase()];
+  if (knownWithout) return knownWithout;
+  if (BARE_CODE.test(label.trim())) return label.trim().toUpperCase();
+  return undefined;
 }
 
-// I-09b: tracks, per main database, which full file path claimed a given fallback
-// translation name — so two unrelated files that both lack a metadata name and happen
-// to share a basename (e.g. two folders each containing "bible.sqlite") don't collapse
-// into one translation bucket. Scoped per mainDb so tests using separate in-memory
-// databases don't see each other's history.
-const fallbackNameClaims = new WeakMap<Database.Database, Map<string, string>>();
+// I-09b: tracks, per claims scope (one per main database), which full file path claimed a
+// given fallback code — so two unrelated files that both lack a recognisable name and
+// share a basename (e.g. two folders each containing "bible.sqlite") don't collapse into
+// one translation.
+export type FallbackClaims = Map<string, string>;
+const claimsByDb = new WeakMap<Database.Database, FallbackClaims>();
 
-export function importOpenlpBible(
-  mainDb: Database.Database,
-  openlpBibleDbPath: string
-): ImportSourceSummary {
-  const source = new Database(openlpBibleDbPath, { readonly: true });
-  const summary: ImportSourceSummary = {
-    file: path.basename(openlpBibleDbPath),
-    kind: 'bible',
-    imported: 0,
-    skipped: 0,
-    errors: [],
-  };
+export interface OpenlpBibleRead {
+  input: TranslationInput;
+  /** Rows this adapter dropped before the repository saw them (unmappable books, orphan verses). */
+  skipped: number;
+  errors: ImportError[];
+}
+
+/**
+ * Reads an OpenLP Bible file into the neutral TranslationInput shape. Reads everything
+ * before anything is written (D-06), so a structural failure here — a missing column,
+ * say — throws with the main database untouched.
+ */
+export function readOpenlpBible(openlpBibleDbPath: string, claims: FallbackClaims = new Map()): OpenlpBibleRead {
+  const source = new Database(openlpBibleDbPath, { readonly: true, fileMustExist: true });
   try {
-    const meta = source.prepare(`SELECT value FROM metadata WHERE key = 'name'`).get() as
-      | { value: string }
-      | undefined;
-    let translation: string;
-    if (meta?.value != null && meta.value.trim() !== '') {
-      translation = meta.value.trim();
-    } else {
-      const fallbackName = path.basename(openlpBibleDbPath, '.sqlite').trim();
-      let claims = fallbackNameClaims.get(mainDb);
-      if (!claims) {
-        claims = new Map();
-        fallbackNameClaims.set(mainDb, claims);
-      }
-      const claimedBy = claims.get(fallbackName);
+    const metaRows = source.prepare(`SELECT key, value FROM metadata`).all() as { key: string; value: string | null }[];
+    const meta = new Map(metaRows.map((r) => [r.key, r.value]));
+    const metaName = typeof meta.get('name') === 'string' ? meta.get('name')!.trim() : '';
+    const basename = path.basename(openlpBibleDbPath, path.extname(openlpBibleDbPath)).trim();
+
+    let code = metaName !== '' ? codeFromLabel(metaName) : undefined;
+    if (!code) {
+      const fallback = codeFromLabel(basename) ?? basename.toUpperCase();
+      const claimedBy = claims.get(fallback);
       if (claimedBy && claimedBy !== openlpBibleDbPath) {
-        // Two different files with no declared name both fell back to the same
-        // basename — collapsing them into one translation would silently merge two
-        // different bibles' verses (see I-09b). Disambiguate using the parent folder
-        // name, the same detail the operator used to tell the files apart when
-        // picking them.
-        translation = `${fallbackName} (${path.basename(path.dirname(openlpBibleDbPath))})`;
+        // Two different files fell back to the same code — merging them would silently
+        // mix two different Bibles' verses (I-09b). Disambiguate with the parent folder,
+        // the same detail the operator used to tell the files apart when picking them.
+        code = `${fallback} (${path.basename(path.dirname(openlpBibleDbPath))})`;
       } else {
-        translation = fallbackName;
-        claims.set(fallbackName, openlpBibleDbPath);
+        code = fallback;
+        claims.set(fallback, openlpBibleDbPath);
       }
     }
-    summary.translation = translation;
+    // "New English Translation (NET)" displays as "NET — New English Translation".
+    const strippedName = metaName.replace(TRAILING_CODE, '').trim();
+    const name = strippedName !== '' ? strippedName : metaName !== '' ? metaName : code;
+    const copyright = meta.get('copyright');
 
-    const books = source
+    const bookRows = source
       .prepare(`SELECT id, name, book_reference_id, testament_reference_id FROM book`)
-      .all() as any[];
-    // Read verses before writing anything to mainDb (see D-06 below) — a structural
-    // failure here (not a per-row one) must leave no partial state behind.
-    const verses = source.prepare(`SELECT book_id, chapter, verse, text FROM verse`).all() as any[];
+      .all() as OpenlpBookRow[];
+    const verseRows = source.prepare(`SELECT book_id, chapter, verse, text FROM verse`).all() as {
+      book_id: number | null;
+      chapter: unknown;
+      verse: unknown;
+      text: unknown;
+    }[];
 
-    const upsertBook = mainDb.prepare(
-      `INSERT INTO bible_books (translation, source_book_id, name, testament, sort_order) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(translation, source_book_id)
-       DO UPDATE SET name = excluded.name, testament = excluded.testament, sort_order = excluded.sort_order`
-    );
-    const getExistingBook = mainDb.prepare(
-      `SELECT id, name FROM bible_books WHERE translation = ? AND source_book_id = ?`
-    );
-    // D-09: bible_verses_fts is kept in sync by triggers (schema.ts migration 3), not
-    // by hand here.
-    const deleteVersesForBook = mainDb.prepare(`DELETE FROM bible_verses WHERE book_id = ?`);
-    const findVerse = mainDb.prepare(
-      `SELECT id, text FROM bible_verses WHERE book_id = ? AND chapter = ? AND verse = ?`
-    );
-    const insertVerse = mainDb.prepare(
-      `INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (?, ?, ?, ?)`
-    );
-    const updateVerse = mainDb.prepare(`UPDATE bible_verses SET text = ? WHERE id = ?`);
+    const errors: ImportError[] = [];
+    let skipped = 0;
 
-    // Source book ids are only meaningful inside this file, so translate them once here
-    // and never let one escape into the rest of the app.
-    const bookIdBySourceId = new Map<number, number>();
-    const bookTx = mainDb.transaction((bookRows: any[]) => {
-      bookRows.forEach((b, index) => {
-        try {
-          if (b.id == null) {
-            // Nothing to key this book's verses off of — skip it explicitly rather
-            // than letting the NOT NULL constraint on source_book_id throw for us.
-            throw new Error('book has a NULL id and cannot be linked to its verses');
-          }
-          const existing = getExistingBook.get(translation, b.id) as { id: number; name: string } | undefined;
-          if (existing && b.name != null && existing.name !== b.name) {
-            // D-01: the same (translation, source_book_id) now names a different book —
-            // a different edition of the file (e.g. with/without the Apocrypha shifting
-            // book ids), not a rename. The old ON CONFLICT DO UPDATE just renamed the
-            // row in place and left its verses attached, mixing one book's text under
-            // another book's name. Wipe this book's verses so the re-import starts
-            // clean; the FTS delete trigger fires as part of this delete.
-            deleteVersesForBook.run(existing.id);
-          }
-          upsertBook.run(
-            translation,
-            b.id,
-            b.name,
-            mapTestament(b.testament_reference_id),
-            b.book_reference_id ?? b.id // display order; NOT a key — KJV reuses 15 twice
-          );
-          bookIdBySourceId.set(b.id, (getExistingBook.get(translation, b.id) as { id: number }).id);
-        } catch (err) {
-          // A bad book row (e.g. NULL name) must not roll back the whole transaction —
-          // that would silently drop every valid book and verse in the file. Any verse
-          // that references this book falls through to the "unknown source book id"
-          // branch in verseTx below, so it is skipped and reported too, never attached
-          // to the wrong book.
-          summary.skipped += 1;
-          summary.errors.push({
-            identifier: b.id != null ? `book ${b.id}` : `book row ${index}`,
-            reason: (err as Error).message,
-          });
-        }
-      });
-    });
-
-    const verseTx = mainDb.transaction((verseRows: any[]) => {
-      for (const v of verseRows) {
-        try {
-          const bookId = bookIdBySourceId.get(v.book_id);
-          if (bookId == null) throw new Error(`verse references unknown source book id ${v.book_id}`);
-          // SQLite's INTEGER affinity silently stores a non-numeric value (e.g. 'abc') as
-          // TEXT instead of rejecting it, so a malformed chapter/verse would otherwise
-          // import successfully, reach the search index, and never be reachable by
-          // getVersesForChapter's numeric lookup. NULL is left to the NOT NULL
-          // constraint below, which already reports it correctly.
-          const chapterInvalid = v.chapter !== null && !Number.isInteger(v.chapter);
-          const verseInvalid = v.verse !== null && !Number.isInteger(v.verse);
-          if (chapterInvalid || verseInvalid) {
-            throw new Error(
-              `verse has a non-numeric chapter or verse number (chapter=${JSON.stringify(v.chapter)}, verse=${JSON.stringify(v.verse)})`
-            );
-          }
-          const existing = findVerse.get(bookId, v.chapter, v.verse) as
-            | { id: number; text: string }
-            | undefined;
-          if (!existing) {
-            insertVerse.run(bookId, v.chapter, v.verse, v.text);
-          } else if (existing.text !== v.text) {
-            updateVerse.run(v.text, existing.id);
-          }
-          summary.imported += 1;
-        } catch (err) {
-          summary.skipped += 1;
-          summary.errors.push({
-            identifier: `${translation} ${v.book_id}:${v.chapter}:${v.verse}`,
-            reason: (err as Error).message,
-          });
-        }
+    // Source book id -> the input book its verses go into. Built once here so a source
+    // id can never escape this adapter.
+    const books: TranslationInput['books'] = [];
+    const bookBySourceId = new Map<number, TranslationInput['books'][number]>();
+    const claimedCodes = new Map<string, string>();
+    bookRows.forEach((row, index) => {
+      const identifier = row.id != null ? `book ${row.id}${row.name ? ` (${row.name})` : ''}` : `book row ${index}`;
+      if (row.id == null) {
+        // Nothing to key this book's verses off of.
+        skipped += 1;
+        errors.push({ identifier, reason: 'book has a NULL id and cannot be linked to its verses' });
+        return;
       }
+      const mapping = mapOpenlpBook(row);
+      if (!mapping.ok) {
+        skipped += 1;
+        errors.push({ identifier, reason: mapping.reason });
+        return;
+      }
+      const earlier = claimedCodes.get(mapping.book.code);
+      if (earlier) {
+        // Two rows naming the same book would merge their verses under one heading.
+        skipped += 1;
+        errors.push({ identifier, reason: `both this and ${earlier} are ${mapping.book.name}; this one was skipped` });
+        return;
+      }
+      claimedCodes.set(mapping.book.code, identifier);
+      if (mapping.warning) errors.push({ identifier, reason: `note: ${mapping.warning}` });
+      const inputBook = { bookCode: mapping.book.code, name: row.name, verses: [] as VerseTuple[] };
+      books.push(inputBook);
+      bookBySourceId.set(row.id, inputBook);
     });
 
-    // D-06: one outer transaction so a structural failure anywhere in this file's
-    // import leaves mainDb exactly as it was before this file, rather than with books
-    // committed and verses missing (e.g. the app was killed between the two commits).
-    const importTx = mainDb.transaction(() => {
-      bookTx(books);
-      verseTx(verses);
-    });
-    importTx();
+    const orphans = new Map<string, number>();
+    for (const v of verseRows) {
+      const book = v.book_id != null ? bookBySourceId.get(v.book_id) : undefined;
+      if (!book) {
+        // Its book was skipped above (and reported there), or never existed.
+        const key = String(v.book_id);
+        orphans.set(key, (orphans.get(key) ?? 0) + 1);
+        continue;
+      }
+      // Values pass through untouched; upsertTranslation validates them.
+      book.verses.push([v.chapter, v.verse, v.text] as VerseTuple);
+    }
+    for (const [sourceId, count] of orphans) {
+      skipped += count;
+      errors.push({
+        identifier: `${code} source book ${sourceId}`,
+        reason: `${count} verse${count === 1 ? '' : 's'} skipped: unknown or skipped source book id ${sourceId}`,
+      });
+    }
+
+    return {
+      input: {
+        code,
+        name,
+        source: 'openlp',
+        licenseNote: typeof copyright === 'string' && copyright.trim() !== '' ? copyright.trim() : null,
+        books,
+      },
+      skipped,
+      errors,
+    };
   } finally {
     source.close();
   }
-  return summary;
+}
+
+export function importOpenlpBible(mainDb: Database.Database, openlpBibleDbPath: string): ImportResult {
+  let claims = claimsByDb.get(mainDb);
+  if (!claims) {
+    claims = new Map();
+    claimsByDb.set(mainDb, claims);
+  }
+  const read = readOpenlpBible(openlpBibleDbPath, claims);
+  const result = upsertTranslation(mainDb, read.input);
+  return {
+    ...result,
+    file: path.basename(openlpBibleDbPath),
+    skipped: result.skipped + read.skipped,
+    errors: [...read.errors, ...result.errors],
+  };
 }
