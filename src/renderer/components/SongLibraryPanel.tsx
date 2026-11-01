@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Song, SongBlock } from '../../shared/types';
+import type { ImportSummary, Song, SongBlock } from '../../shared/types';
+import ConfirmDialog, { ConfirmState } from './ConfirmDialog';
+import ImportSummaryList from './ImportSummaryList';
 
 function autoSizeTextarea(el: HTMLTextAreaElement | null) {
   if (!el) return;
@@ -12,11 +14,6 @@ function autoSizeTextarea(el: HTMLTextAreaElement | null) {
 type EditableBlock = Omit<SongBlock, 'id'> & { id: number | null; key: string };
 
 type Snapshot = { song: Song; blocks: EditableBlock[] };
-
-// Renders as an in-app dialog instead of window.confirm(): a native dialog leaves the
-// renderer without keyboard focus afterward on Linux, so nothing types until an unrelated
-// click resyncs it (see the discard-changes flow this replaced).
-type ConfirmState = { message: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void };
 
 function toEditable(block: SongBlock): EditableBlock {
   return { ...block, key: `db-${block.id}` };
@@ -49,8 +46,11 @@ function errorMessage(err: unknown): string {
 
 export default function SongLibraryPanel({
   registerDirtyGuard,
+  onContentChanged,
 }: {
   registerDirtyGuard?: (guard: (proceed: () => void) => void) => void;
+  /** Called after an import, so App can refresh the staged list and live state. */
+  onContentChanged?: () => void;
 }) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
@@ -62,14 +62,48 @@ export default function SongLibraryPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+  const [importing, setImporting] = useState(false);
+  // Distinguishes an empty library from a search with no hits, and from "not loaded yet".
+  const [librarySize, setLibrarySize] = useState<number | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const focusTitleOnOpen = useRef(false);
 
   const refreshSongs = () =>
     window.api
       .findSongsByQuery(searchQuery)
-      .then(setSongs)
+      .then((found) => {
+        setSongs(found);
+        if (searchQuery === '') setLibrarySize(found.length);
+      })
       .catch((err) => setError(errorMessage(err)));
+
+  // Re-imports replace a song's blocks wholesale, so an open editor would be holding stale
+  // block ids afterwards — the import goes through the same discard guard as switching
+  // songs, then closes the editor.
+  function importFromOpenlp() {
+    if (importing) return;
+    requestDiscardConfirm(async () => {
+      setImporting(true);
+      setError(null);
+      try {
+        const files = await window.api.pickOpenlp('songs');
+        if (files.length === 0) return;
+        setImportSummary(await window.api.importOpenlpSongs(files[0]));
+        setSelectedSong(null);
+        setBlocks([]);
+        setSnapshot(null);
+        setDirty(false);
+        if (searchQuery === '') await refreshSongs();
+        else setSearchQuery('');
+        onContentChanged?.();
+      } catch (err) {
+        setError(errorMessage(err));
+      } finally {
+        setImporting(false);
+      }
+    }, 'import from OpenLP');
+  }
 
   useEffect(() => {
     const timeout = setTimeout(refreshSongs, 150);
@@ -96,13 +130,13 @@ export default function SongLibraryPanel({
 
   // Runs `proceed` once the operator confirms discarding, or immediately if there's nothing
   // unsaved to discard. Always an in-app dialog, never window.confirm() (see ConfirmState).
-  function requestDiscardConfirm(proceed: () => void) {
+  function requestDiscardConfirm(proceed: () => void, action = 'switch songs') {
     if (!dirty || !selectedSong) {
       proceed();
       return;
     }
     setConfirmState({
-      message: `You have unsaved changes to "${selectedSong.title}". Discard them and switch songs?`,
+      message: `You have unsaved changes to "${selectedSong.title}". Discard them and ${action}?`,
       confirmLabel: 'Discard',
       onConfirm: () => {
         setConfirmState(null);
@@ -114,7 +148,7 @@ export default function SongLibraryPanel({
 
   useEffect(() => {
     if (!registerDirtyGuard) return;
-    registerDirtyGuard(requestDiscardConfirm);
+    registerDirtyGuard((proceed) => requestDiscardConfirm(proceed));
   }, [registerDirtyGuard, dirty, selectedSong]);
 
   function openSong(song: Song) {
@@ -298,30 +332,7 @@ export default function SongLibraryPanel({
 
   return (
     <div className="song-library">
-      {confirmState && (
-        <div className="song-library__confirm-overlay" role="presentation" onClick={confirmState.onCancel}>
-          <div
-            className="song-library__confirm-box"
-            role="alertdialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p>{confirmState.message}</p>
-            <div className="song-library__confirm-actions">
-              <button type="button" className="btn-pill btn-pill--small" onClick={confirmState.onCancel}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-pill btn-pill--danger btn-pill--small"
-                onClick={confirmState.onConfirm}
-              >
-                {confirmState.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmState && <ConfirmDialog state={confirmState} />}
       {error && (
         <div className="song-library__error" role="alert">
           <span>{error}</span>
@@ -335,6 +346,19 @@ export default function SongLibraryPanel({
           </button>
         </div>
       )}
+      <div className="library-panel__header">
+        <h2 className="library-panel__title">Songs</h2>
+        <div className="header-spacer" />
+        <button
+          type="button"
+          className="btn-pill btn-pill--small btn-pill--secondary"
+          onClick={importFromOpenlp}
+          disabled={importing}
+        >
+          {importing ? 'Importing…' : 'Import from OpenLP…'}
+        </button>
+      </div>
+      {importSummary && <ImportSummaryList summary={importSummary} />}
       <div className="song-library__body">
         <div className="song-library__list">
           <button type="button" className="btn-pill" onClick={createNewSong}>
@@ -348,6 +372,9 @@ export default function SongLibraryPanel({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          {librarySize === 0 && searchQuery === '' && (
+            <p className="library-empty">No songs yet — add one, or import from OpenLP.</p>
+          )}
           <ul className="song-library__songs">
             {songs.map((song) => (
               <li key={song.id}>

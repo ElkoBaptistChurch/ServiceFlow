@@ -63,6 +63,9 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
   const searchSeq = useRef(0);
 
   const isOpen = query.trim() !== '';
+  // App passes '' when no translation is installed (the operator deleted the bundled KJV,
+  // say). Say so, rather than showing "No matches" for John 3:16.
+  const noBibles = mode === 'bible' && translation === '';
 
   useEffect(() => {
     onOpenChange?.(isOpen);
@@ -79,7 +82,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
     setContentResults([]);
     setBooks([]);
     setSongs([]);
-    if (query.trim() === '') {
+    if (query.trim() === '' || noBibles) {
       setSearching(false);
       return;
     }
@@ -162,7 +165,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
       }
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [query, mode, subMode, translation]);
+  }, [query, mode, subMode, translation, noBibles]);
 
   // Same monotonic-sequence idiom as the search effect above, applied to the one other
   // async path in this file: a slow chapter fetch for a book the operator has already
@@ -336,7 +339,12 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
 
       {isOpen && (
         <div className="search-popover" role="listbox" aria-label="Search results">
-          {subMode === 'browse' && mode === 'bible' && !selectedBook && chapterMatches.length === 0 && (
+          {noBibles && (
+            <div className="search-popover__empty" role="status">
+              No Bibles installed — open Library → Bibles
+            </div>
+          )}
+          {!noBibles && subMode === 'browse' && mode === 'bible' && !selectedBook && chapterMatches.length === 0 && (
             <>
               <div className="search-popover__section">
                 <span className="search-popover__section-label">Books</span>
@@ -459,7 +467,7 @@ export default function SearchPanel({ translation, onStaged, onOpenChange, regis
             </>
           )}
 
-          {subMode === 'content' && (
+          {!noBibles && subMode === 'content' && (
             <>
               <div className="search-popover__section">
                 <span className="search-popover__section-label">In the words</span>

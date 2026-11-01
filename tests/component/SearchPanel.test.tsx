@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SearchPanel from '../../src/renderer/components/SearchPanel';
 
-// id 7 is ServiceFlow's own book id; 43 is the source id it came from. The component
-// must always pass the former around.
-const JOHN = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT', sortOrder: 43 };
+// id 7 is ServiceFlow's own book id; the component must always pass that around, never
+// a code or a source file's own numbering.
+const JOHN = { id: 7, translationCode: 'KJV', bookCode: 'JHN', name: 'John', testament: 'NT', sortOrder: 43 };
 
 beforeEach(() => {
   (window as any).api = {
@@ -92,7 +92,7 @@ describe('SearchPanel', () => {
   // Regression test: an older in-flight query resolving AFTER a newer one must not
   // clobber the newer results. Controls resolution order explicitly via deferred promises.
   it('keeps the newer book-search results when an older query resolves last', async () => {
-    const ROMANS = { id: 45, translation: 'KJV', sourceBookId: 45, name: 'Romans', testament: 'NT', sortOrder: 45 };
+    const ROMANS = { id: 45, translationCode: 'KJV', bookCode: 'ROM', name: 'Romans', testament: 'NT', sortOrder: 45 };
     let resolveRom: (v: any) => void;
     let resolveRomans: (v: any) => void;
     const romPromise = new Promise((resolve) => { resolveRom = resolve; });
@@ -183,7 +183,7 @@ describe('SearchPanel', () => {
 
     fireEvent.change(input, { target: { value: 'gen' } });
     await waitFor(() => expect(window.api.findBibleBooks).toHaveBeenCalledWith('gen', 'KJV'));
-    const GENESIS = { id: 1, translation: 'KJV', sourceBookId: 1, name: 'Genesis', testament: 'OT', sortOrder: 1 };
+    const GENESIS = { id: 1, translationCode: 'KJV', bookCode: 'GEN', name: 'Genesis', testament: 'OT', sortOrder: 1 };
     resolveGen!([GENESIS]);
     await screen.findByText('Genesis');
 
@@ -197,8 +197,8 @@ describe('SearchPanel', () => {
   // R-09: selectBook has no stale-response guard -- a slow chapter fetch for a book the
   // operator already clicked past must not overwrite the chapters of the book now selected.
   it('ignores a slow chapter fetch for a book that is no longer selected', async () => {
-    const LAMENTATIONS = { id: 25, translation: 'KJV', sourceBookId: 25, name: 'Lamentations', testament: 'OT', sortOrder: 25 };
-    const PSALMS = { id: 19, translation: 'KJV', sourceBookId: 19, name: 'Psalms', testament: 'OT', sortOrder: 19 };
+    const LAMENTATIONS = { id: 25, translationCode: 'KJV', bookCode: 'LAM', name: 'Lamentations', testament: 'OT', sortOrder: 25 };
+    const PSALMS = { id: 19, translationCode: 'KJV', bookCode: 'PSA', name: 'Psalms', testament: 'OT', sortOrder: 19 };
     (window.api.findBibleBooks as any).mockResolvedValue([LAMENTATIONS, PSALMS]);
 
     let resolveLam: (v: any) => void;
@@ -242,7 +242,7 @@ describe('SearchPanel', () => {
   // straight to a chapter grid for Mark, filtered to chapters starting with "5" and with
   // the exact match (5) marked as the default pick.
   it('auto-finds a book+chapter search and shows prefix matches alongside the exact one', async () => {
-    const MARK = { id: 41, translation: 'KJV', sourceBookId: 41, name: 'Mark', testament: 'NT', sortOrder: 41 };
+    const MARK = { id: 41, translationCode: 'KJV', bookCode: 'MRK', name: 'Mark', testament: 'NT', sortOrder: 41 };
     (window.api.findBibleBooks as any).mockImplementation((q: string) =>
       q === 'mark' ? Promise.resolve([MARK]) : Promise.resolve([])
     );
@@ -262,7 +262,7 @@ describe('SearchPanel', () => {
   });
 
   it('stages the exact chapter match on Enter when it is the only exact match', async () => {
-    const MARK = { id: 41, translation: 'KJV', sourceBookId: 41, name: 'Mark', testament: 'NT', sortOrder: 41 };
+    const MARK = { id: 41, translationCode: 'KJV', bookCode: 'MRK', name: 'Mark', testament: 'NT', sortOrder: 41 };
     (window.api.findBibleBooks as any).mockResolvedValue([MARK]);
     (window.api.getChaptersForBook as any).mockResolvedValue([1, 2, 3, 4, 5]);
     (window.api.stageItem as any).mockResolvedValue({ id: 9, type: 'bible', refId: 41, chapter: 5, position: 0, label: 'Mark 5 (KJV)' });
@@ -282,8 +282,8 @@ describe('SearchPanel', () => {
   // Ambiguous case: "john 1" matches John, 1 John, 2 John and 3 John, each of which has a
   // chapter 1 -- all four should render as their own section in one popover.
   it('shows every matching book as its own section for an ambiguous book+chapter search', async () => {
-    const JOHN_B = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT', sortOrder: 43 };
-    const FIRST_JOHN = { id: 8, translation: 'KJV', sourceBookId: 44, name: '1 John', testament: 'NT', sortOrder: 44 };
+    const JOHN_B = { id: 7, translationCode: 'KJV', bookCode: 'JHN', name: 'John', testament: 'NT', sortOrder: 43 };
+    const FIRST_JOHN = { id: 8, translationCode: 'KJV', bookCode: '1JN', name: '1 John', testament: 'NT', sortOrder: 44 };
     (window.api.findBibleBooks as any).mockImplementation((q: string) =>
       q === 'john' ? Promise.resolve([JOHN_B, FIRST_JOHN]) : Promise.resolve([])
     );
@@ -298,5 +298,28 @@ describe('SearchPanel', () => {
     await waitFor(() => expect(window.api.getChaptersForBook).toHaveBeenCalledWith(8));
     await waitFor(() => expect(screen.getByText('John')).toBeInTheDocument());
     expect(screen.getByText('1 John')).toBeInTheDocument();
+  });
+
+  // D12: with no Bible installed (the bundled KJV deleted, say) the operator must be told
+  // where to fix it, not shown "No matches" for John 3:16.
+  it('says no Bibles are installed instead of searching when there is no translation', async () => {
+    render(<SearchPanel translation="" onStaged={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'john 3' } });
+    expect(await screen.findByText('No Bibles installed — open Library → Bibles')).toBeInTheDocument();
+    expect(screen.queryByText('No matches')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /content search/i }));
+    expect(await screen.findByText('No Bibles installed — open Library → Bibles')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(window.api.findBibleBooks).not.toHaveBeenCalled();
+    expect(window.api.searchBibleContent).not.toHaveBeenCalled();
+  });
+
+  it('still searches songs when there is no Bible', async () => {
+    render(<SearchPanel translation="" onStaged={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^songs?$/i }));
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'amazing' } });
+    expect(await screen.findByText('Amazing Grace')).toBeInTheDocument();
+    expect(screen.queryByText(/No Bibles installed/)).toBeNull();
   });
 });
