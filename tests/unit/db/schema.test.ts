@@ -1,6 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { applySchema } from '../../../src/main/db/schema';
+import { applySchema, SCHEMA_VERSION } from '../../../src/main/db/schema';
+
+function insertTranslation(db: Database.Database, id: number, code: string): void {
+  db.prepare(
+    `INSERT INTO bible_translations (id, code, name, source, updated_at) VALUES (?, ?, ?, 'bundled', '')`
+  ).run(id, code, code);
+}
+
+function insertKjvGenesis(db: Database.Database): void {
+  insertTranslation(db, 1, 'KJV');
+  db.prepare(
+    `INSERT INTO bible_books (id, translation_id, book_code, name, testament, sort_order) VALUES (1, 1, 'GEN', 'Genesis', 'OT', 1)`
+  ).run();
+}
 
 function tableNames(db: Database.Database): string[] {
   return (db.prepare(`SELECT name FROM sqlite_master WHERE type IN ('table','view')`).all() as { name: string }[])
@@ -14,6 +27,7 @@ describe('applySchema', () => {
     applySchema(db);
     const names = tableNames(db);
     for (const expected of [
+      'bible_translations',
       'bible_books',
       'bible_verses',
       'song_blocks',
@@ -45,10 +59,8 @@ describe('applySchema', () => {
   it('supports FTS5 search on bible_verses via bible_verses_fts', () => {
     const db = new Database(':memory:');
     applySchema(db);
-    db.prepare(
-      `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (1, 'KJV', 1, 'Genesis', 'OT', 1)`
-    ).run();
-    // The AFTER INSERT trigger (migration 3) keeps bible_verses_fts in sync — no
+    insertKjvGenesis(db);
+    // The AFTER INSERT trigger keeps bible_verses_fts in sync — no
     // manual fts insert needed here.
     db.prepare(
       `INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (1, 1, 1, 'In the beginning God created the heaven and the earth.')`
@@ -83,9 +95,7 @@ describe('applySchema', () => {
   it('updates bible_verses_fts when a verse is edited', () => {
     const db = new Database(':memory:');
     applySchema(db);
-    db.prepare(
-      `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (1, 'KJV', 1, 'Genesis', 'OT', 1)`
-    ).run();
+    insertKjvGenesis(db);
     const info = db
       .prepare(`INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (1, 1, 1, 'old wording')`)
       .run();
@@ -99,19 +109,55 @@ describe('applySchema', () => {
     ).toHaveLength(1);
   });
 
-  // Regression guard for the real-data fact that KJV's source book 44 is Romans
-  // while NET's source book 44 is Acts. Two translations must be able to disagree.
-  it('lets two translations reuse the same source_book_id for different books', () => {
+  it('makes (translation, book_code) unique, but lets two translations share a book code', () => {
     const db = new Database(':memory:');
     applySchema(db);
+    insertTranslation(db, 1, 'KJV');
+    insertTranslation(db, 2, 'NET');
     const insert = db.prepare(
-      `INSERT INTO bible_books (translation, source_book_id, name, testament, sort_order) VALUES (?, ?, ?, 'NT', ?)`
+      `INSERT INTO bible_books (translation_id, book_code, name, testament, sort_order) VALUES (?, 'ROM', 'Romans', 'NT', 45)`
     );
     expect(() => {
-      insert.run('KJV', 44, 'Romans', 45);
-      insert.run('NET', 44, 'Acts', 44);
+      insert.run(1);
+      insert.run(2);
     }).not.toThrow();
-    expect(() => insert.run('KJV', 44, 'Romans', 45)).toThrow();
+    expect(() => insert.run(1)).toThrow(/UNIQUE/);
+  });
+
+  it('makes the translation code unique case-insensitively', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    insertTranslation(db, 1, 'KJV');
+    expect(() => insertTranslation(db, 2, 'kjv')).toThrow(/UNIQUE/);
+    expect(db.prepare(`SELECT id FROM bible_translations WHERE code = 'Kjv'`).get()).toEqual({ id: 1 });
+  });
+
+  it('cascades a translation delete to its books, verses and search index', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    insertKjvGenesis(db);
+    db.prepare(`INSERT INTO bible_verses (book_id, chapter, verse, text) VALUES (1, 1, 1, 'In the beginning')`).run();
+
+    db.prepare(`DELETE FROM bible_translations WHERE id = 1`).run();
+
+    expect(db.prepare(`SELECT COUNT(*) AS c FROM bible_books`).get()).toEqual({ c: 0 });
+    expect(db.prepare(`SELECT COUNT(*) AS c FROM bible_verses`).get()).toEqual({ c: 0 });
+    expect(
+      db.prepare(`SELECT rowid FROM bible_verses_fts WHERE bible_verses_fts MATCH 'beginning'`).all()
+    ).toHaveLength(0);
+  });
+
+  it('rejects a book whose testament is not OT, NT or AP', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    insertTranslation(db, 1, 'KJV');
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO bible_books (translation_id, book_code, name, testament, sort_order) VALUES (1, 'GEN', 'Genesis', 'XX', 1)`
+        )
+        .run()
+    ).toThrow(/CHECK/);
   });
 
   it('keys song blocks by display_order so a repeated label is not lost', () => {
@@ -126,22 +172,27 @@ describe('applySchema', () => {
     expect(db.prepare(`SELECT COUNT(*) as c FROM song_blocks`).get()).toEqual({ c: 2 });
   });
 
-  // D-02: an install that predates the migration runner has every table but
-  // PRAGMA user_version = 0. Applying the schema again must bring it fully current
-  // instead of silently doing nothing because the tables already exist.
+  // D-02: a database whose tables exist but whose user_version is unset must still be
+  // brought fully current instead of silently doing nothing.
   it('applies pending migrations to an existing database', () => {
     const db = new Database(':memory:');
     applySchema(db);
-    // Roll back to the pre-migration-runner state: tables exist, version is unset.
     db.pragma('user_version = 0');
     applySchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(3);
-    const columns = (db.prepare(`PRAGMA table_info(live_state)`).all() as { name: string }[]).map((c) => c.name);
-    expect(columns).toContain('staged_item_id');
+    expect(db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
+    const columns = (db.prepare(`PRAGMA table_info(bible_books)`).all() as { name: string }[]).map((c) => c.name);
+    expect(columns).toContain('book_code');
   });
 
-  // D-04: live_state.staged_item_id now has a real FK, added via the migration runner
-  // since SQLite can't ALTER TABLE to add one to an existing table.
+  // D12: the schema was rewritten in place, so a database from an older pre-release
+  // build must fail with an instruction, not later on a missing column.
+  it('refuses a database from an older pre-release build with a plain instruction', () => {
+    const db = new Database(':memory:');
+    db.pragma(`user_version = ${SCHEMA_VERSION + 2}`);
+    expect(() => applySchema(db)).toThrow(/Delete serviceflow\.db/);
+  });
+
+  // D-04: live_state.staged_item_id has a real FK.
   it('clears live state when its staged item is deleted', () => {
     const db = new Database(':memory:');
     applySchema(db);

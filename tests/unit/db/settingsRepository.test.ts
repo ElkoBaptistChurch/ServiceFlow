@@ -38,6 +38,22 @@ describe('settingsRepository', () => {
       setSetting(db, SETTING_TRANSLATION, 'NIV');
       expect(getActiveTranslation(db, ['KJV', 'NIV'])).toBe('NIV');
     });
+
+    it('prefers KJV over the first translation when nothing usable is stored', () => {
+      expect(getActiveTranslation(db, ['ASV', 'KJV', 'NET'])).toBe('KJV');
+      setSetting(db, SETTING_TRANSLATION, 'NIV'); // deleted since
+      expect(getActiveTranslation(db, ['ASV', 'KJV'])).toBe('KJV');
+      expect(getActiveTranslation(db, ['ASV', 'NET'])).toBe('ASV');
+    });
+
+    it('matches the stored code case-insensitively and returns the installed spelling', () => {
+      setSetting(db, SETTING_TRANSLATION, 'net');
+      expect(getActiveTranslation(db, ['KJV', 'NET'])).toBe('NET');
+    });
+
+    it('returns null when no translation is installed', () => {
+      expect(getActiveTranslation(db, [])).toBeNull();
+    });
   });
 
   describe('getTheme', () => {
