@@ -90,6 +90,10 @@ would erase verses rather than heal anything.
 reachable through content search, until the operator imports into a fresh database. Judged the
 cheaper failure by a wide margin.
 
+> **Note (2026-11-01, D12):** still holds, but now lives in `bibleRepository.upsertTranslation` and
+> applies to every Bible source (bundled, OpenLP, future file formats), not just the OpenLP importer.
+> Books are upserted by `(translation, book_code)` rather than `(translation, source_book_id)`.
+
 ---
 
 ## D6 — The church's NET and NKJV files are partial, and acceptance criterion 3 is restated
@@ -223,3 +227,40 @@ use. See `README.md` for the full Windows checklist.
 
 [0mNeither[37m [0mbug[37m [0mwas[37m [0mintroduced[37m [0m[1m[1m[35mby[0m[37m [0mCI[37m [0m—[37m [0mCI[37m [0monly[37m [0mmade[37m [0mthem[37m [0mreachable,[37m [0mwhich[37m [0m[1m[1m[35mis[0m[37m [0mthe[37m [0mpoint[37m [0mof[37m [0mit.[37m
 [0m
+
+---
+
+## D12 — OpenLP is an import source, not the data model
+
+**Date:** 2026-11-01 · **Status:** Adopted · **Plan:**
+[native content model](docs/superpowers/plans/2026-11-01-native-content-model.md)
+
+Until now the Bible side was shaped around OpenLP: the only code that wrote Bible data was the
+OpenLP importer, `bible_books` was keyed by OpenLP's `source_book_id`, and translation names came
+from OpenLP's metadata. A fresh install had no content and no route to any that didn't go through
+OpenLP.
+
+**Decision:**
+
+- **The repositories are the only write path.** `bibleRepository.upsertTranslation` and
+  `songRepository.importSongs` own transactions, upsert semantics, validation and the search index.
+  An import source only translates its own format into a neutral input shape and calls them.
+- **Books are keyed by canonical USFM code** (`GEN` … `REV`, plus deuterocanonical codes), with
+  display order and testament taken from `src/shared/bibleBooks.ts`, never from the source.
+  OpenLP's book ids never leave the OpenLP adapter.
+- **Translations are a first-class table keyed by a short `code`** (`KJV`). Settings, search and
+  staged labels identify a translation by its code.
+- **A public-domain KJV is bundled and seeded once.** A `bundled.<code>.seeded` setting records the
+  seed, so a KJV the operator deliberately deleted does not come back on the next launch;
+  *Restore bundled KJV* re-runs the seed with `force`.
+
+ServiceFlow is pre-release, so the schema was rewritten in place (migrations collapsed into one
+baseline) rather than migrated. Developers delete their local `serviceflow.db`.
+
+**Entries this supersedes or moves:**
+
+- **D5** (upsert, never delete) — still holds; see the note on D5.
+- **D-01** (wipe a book's verses when the same source id names a different book) — obsolete.
+  Canonical codes cannot shift between editions the way OpenLP's row ids could.
+- **I-09b** (two files with no metadata name and the same basename must not collapse into one
+  translation) — moves into the OpenLP adapter unchanged.
