@@ -8,6 +8,7 @@ import { clearStagedItems } from './db/stagedItemsRepository';
 import * as settingsRepo from './db/settingsRepository';
 import { createServer, ServerHandle } from './server/server';
 import { registerIpcHandlers } from './ipc/handlers';
+import { bundledBiblesDir, seedBundledBibles } from './content/bundledBibles';
 
 const DEFAULT_PORT = 4180;
 const SETTING_LAST_PORT = 'last_bound_port';
@@ -72,6 +73,11 @@ async function createWindow() {
   const db = openDatabase(dbPath);
   dbRef = db;
   seedDefaultOutputStyles(db);
+  // D12: a fresh install ships with a ready-to-use KJV. Seeded synchronously, before the
+  // window exists: a cold seed of all 31,102 verses (FTS triggers included) measured
+  // ~550 ms on the dev machine, and every later launch is a no-op settings lookup.
+  const biblesDir = bundledBiblesDir({ packaged: app.isPackaged, resourcesPath: process.resourcesPath });
+  seedBundledBibles(db, { dir: biblesDir });
 
   // See STALE_LIVE_STATE_MS above for why this is an age bound rather than an
   // unconditional clear.
@@ -152,7 +158,7 @@ async function createWindow() {
     mainWindow.focus();
   }
 
-  registerIpcHandlers(db, server, mainWindow, port);
+  registerIpcHandlers(db, server, mainWindow, port, biblesDir);
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);

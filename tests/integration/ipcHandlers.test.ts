@@ -13,12 +13,18 @@ import {
   handleSetOutputHidden,
   handleSetActiveStyle,
   handleUnstageItem,
-  handleImportOpenlp,
+  handleImportOpenlpFiles,
+  handleDeleteTranslation,
+  handleRestoreBundled,
+  openlpDataDir,
   handleDeleteSong,
   handleDeleteSongBlock,
   getServerUrls,
 } from '../../src/main/ipc/handlers';
 import { createSong, addBlock } from '../../src/main/db/songRepository';
+import { findBooksByName, listTranslationCodes, upsertTranslation } from '../../src/main/db/bibleRepository';
+import { getSetting, setSetting, SETTING_TRANSLATION } from '../../src/main/db/settingsRepository';
+import { seedBundledBibles } from '../../src/main/content/bundledBibles';
 import { IpcChannels } from '../../src/shared/ipcChannels';
 import { createFixtureSongsDb, createFixtureBibleDb } from '../helpers/openlpFixtures';
 
@@ -47,7 +53,7 @@ function createFixtureBibleDbWithManyErrors(count: number): string {
 /** Imports one fixture song and returns real ids -- setLiveState now rejects fabricated ones. */
 function importSong(fakeWindow: any, title: string): { songId: number; blockId: number } {
   const songsPath = createFixtureSongsDb([{ title, lyrics: SONG_LYRICS_XML }]);
-  handleImportOpenlp(db, server, fakeWindow, [songsPath]);
+  handleImportOpenlpFiles(db, server, fakeWindow, 'songs', [songsPath]);
   const song = db.prepare(`SELECT id FROM songs WHERE title = ?`).get(title) as { id: number };
   const block = db.prepare(`SELECT id FROM song_blocks WHERE song_id = ?`).get(song.id) as { id: number };
   return { songId: song.id, blockId: block.id };
@@ -93,7 +99,7 @@ describe('handleSetLiveState', () => {
         { bookId: 45, chapter: 8, verse: 1, text: 'There is therefore now no condemnation.' },
       ]
     );
-    handleImportOpenlp(db, server, fakeWindow, [biblePath]);
+    handleImportOpenlpFiles(db, server, fakeWindow, 'bible', [biblePath]);
     const johnBook = db.prepare(`SELECT id FROM bible_books WHERE name = 'John'`).get() as { id: number };
     const romansVerse = db
       .prepare(`SELECT id FROM bible_verses WHERE text LIKE 'There is therefore%'`)
@@ -110,7 +116,7 @@ describe('handleSetLiveState', () => {
       { title: 'Song A', lyrics: SONG_LYRICS_XML },
       { title: 'Song B', lyrics: SONG_LYRICS_XML },
     ]);
-    handleImportOpenlp(db, server, fakeWindow, [songsPath]);
+    handleImportOpenlpFiles(db, server, fakeWindow, 'songs', [songsPath]);
     const songB = db.prepare(`SELECT id FROM songs WHERE title = 'Song B'`).get() as { id: number };
     const blockA = db
       .prepare(`SELECT sb.id FROM song_blocks sb JOIN songs s ON s.id = sb.song_id WHERE s.title = 'Song A'`)
@@ -236,28 +242,60 @@ describe('handleDeleteSongBlock', () => {
   });
 });
 
-describe('handleImportOpenlp', () => {
-  it('classifies each picked file by its schema and reports per-file results', () => {
+describe('handleImportOpenlpFiles', () => {
+  const songLyrics =
+    '<?xml version="1.0"?><song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[Line one]]></verse></lyrics></song>';
+
+  it('imports Bible files and reports per-file results', () => {
     const fakeWindow = { webContents: { send: vi.fn() } } as any;
-    const songsPath = createFixtureSongsDb([
-      {
-        title: 'Test Song',
-        lyrics:
-          '<?xml version="1.0"?><song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[Line one]]></verse></lyrics></song>',
-      },
-    ]);
-    const biblePath = createFixtureBibleDb(
+    const kjvPath = createFixtureBibleDb(
       'KJV',
       [{ id: 43, name: 'John', testamentReferenceId: 2 }],
       [{ bookId: 43, chapter: 3, verse: 16, text: 'For God so loved the world.' }]
     );
+    const netPath = createFixtureBibleDb(
+      'New English Translation (NET)',
+      [{ id: 43, name: 'John', testamentReferenceId: 2 }],
+      [{ bookId: 43, chapter: 3, verse: 16, text: 'For this is the way God loved the world.' }]
+    );
 
-    const summary = handleImportOpenlp(db, server, fakeWindow, [songsPath, biblePath]);
+    const summary = handleImportOpenlpFiles(db, server, fakeWindow, 'bible', [kjvPath, netPath]);
 
     expect(summary.errors).toHaveLength(0);
-    expect(summary.sources.map((s) => s.kind).sort()).toEqual(['bible', 'songs']);
-    expect(summary.sources.find((s) => s.kind === 'songs')?.imported).toBe(1);
-    expect(summary.sources.find((s) => s.kind === 'bible')?.translation).toBe('KJV');
+    expect(summary.sources.map((s) => s.translation)).toEqual(['KJV', 'NET']);
+    expect(summary.imported).toBe(2);
+  });
+
+  // The operator picked the wrong kind of file: say which button to use, and keep going.
+  it('rejects a song database picked under Bible import, and still imports the rest of the batch', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const songsPath = createFixtureSongsDb([{ title: 'Test Song', lyrics: songLyrics }]);
+    const biblePath = createFixtureBibleDb(
+      'KJV',
+      [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }],
+      [{ bookId: 1, chapter: 1, verse: 1, text: 'In the beginning.' }]
+    );
+
+    const summary = handleImportOpenlpFiles(db, server, fakeWindow, 'bible', [songsPath, biblePath]);
+
+    expect(summary.sources[0]).toMatchObject({ kind: 'unknown', imported: 0, skipped: 1 });
+    expect(summary.sources[0].errors[0].reason).toMatch(/song database — use Library → Songs/);
+    expect(summary.sources[1]).toMatchObject({ kind: 'bible', imported: 1 });
+    expect(db.prepare(`SELECT COUNT(*) AS c FROM songs`).get()).toEqual({ c: 0 });
+  });
+
+  it('rejects a Bible picked under Songs import', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const biblePath = createFixtureBibleDb(
+      'KJV',
+      [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }],
+      [{ bookId: 1, chapter: 1, verse: 1, text: 'In the beginning.' }]
+    );
+
+    const summary = handleImportOpenlpFiles(db, server, fakeWindow, 'songs', [biblePath]);
+
+    expect(summary.sources[0].errors[0].reason).toMatch(/OpenLP Bible — use Library → Bibles/);
+    expect(listTranslationCodes(db)).toEqual([]);
   });
 
   it('does not misclassify a bible file just because its path mentions songs', () => {
@@ -266,10 +304,29 @@ describe('handleImportOpenlp', () => {
     const biblePath = createFixtureBibleDb(
       'KJV',
       [{ id: 1, name: 'Genesis', testamentReferenceId: 1 }],
-      [{ bookId: 1, chapter: 1, verse: 1, text: 'In the beginning.' }]
+      [{ bookId: 1, chapter: 1, verse: 1, text: 'In the beginning.' }],
+      { fileName: 'songs-backup.sqlite' }
     );
-    const summary = handleImportOpenlp(db, server, fakeWindow, [biblePath]);
+    const summary = handleImportOpenlpFiles(db, server, fakeWindow, 'bible', [biblePath]);
     expect(summary.sources[0].kind).toBe('bible');
+  });
+
+  it('keeps a live Bible verse live across a Bible import (verse ids are upserted in place)', () => {
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const biblePath = createFixtureBibleDb(
+      'KJV',
+      [{ id: 43, name: 'John', testamentReferenceId: 2 }],
+      [{ bookId: 43, chapter: 3, verse: 16, text: 'For God so loved the world.' }]
+    );
+    handleImportOpenlpFiles(db, server, fakeWindow, 'bible', [biblePath]);
+    const john = findBooksByName(db, 'John', 'KJV')[0];
+    const verse = db.prepare(`SELECT id FROM bible_verses WHERE book_id = ?`).get(john.id) as { id: number };
+    const staged = addStagedItem(db, 'bible', john.id, 3);
+    handleSetLiveState(db, server, fakeWindow, staged.id, verse.id, null);
+
+    handleImportOpenlpFiles(db, server, fakeWindow, 'bible', [biblePath]);
+
+    expect(getLiveState(db)).toMatchObject({ stagedItemId: staged.id, verseOrBlockId: verse.id, reference: 'John 3:16' });
   });
 
   // Carried-forward requirement from the Task 5 review: the song importer deletes and
@@ -287,14 +344,14 @@ describe('handleImportOpenlp', () => {
       },
     ]);
     // First import to get a real staged/live item pointing at a real block id.
-    handleImportOpenlp(db, server, fakeWindow, [songsPath]);
+    handleImportOpenlpFiles(db, server, fakeWindow, 'songs', [songsPath]);
     const stagedItem = addStagedItem(db, 'song', 1, null);
     const blocks = db.prepare(`SELECT id FROM song_blocks WHERE song_id = 1`).all() as { id: number }[];
     handleSetLiveState(db, server, fakeWindow, stagedItem.id, blocks[0].id, null);
     expect(getLiveState(db).stagedItemId).toBe(stagedItem.id);
 
     const broadcastSpy = vi.spyOn(server, 'broadcastLiveUpdate');
-    handleImportOpenlp(db, server, fakeWindow, [songsPath]);
+    handleImportOpenlpFiles(db, server, fakeWindow, 'songs', [songsPath]);
 
     const cleared = getLiveState(db);
     expect(cleared.stagedItemId).toBeNull();
@@ -319,7 +376,13 @@ describe('handleImportOpenlp', () => {
 
     const anotherGoodPath = createFixtureSongsDb([{ title: 'Another Good Song', lyrics: SONG_LYRICS_XML }]);
 
-    const summary = handleImportOpenlp(db, server, fakeWindow, [goodPath, brokenPath, anotherGoodPath]);
+    const summaries = [goodPath, brokenPath, anotherGoodPath].map((p) =>
+      handleImportOpenlpFiles(db, server, fakeWindow, 'songs', [p])
+    );
+    const summary = {
+      sources: summaries.flatMap((s) => s.sources),
+      imported: summaries.reduce((n, s) => n + s.imported, 0),
+    };
 
     expect(summary.sources).toHaveLength(3);
     expect(summary.sources[0].imported).toBe(1);
@@ -335,22 +398,131 @@ describe('handleImportOpenlp', () => {
     const junkPath = path.join(junkDir, 'photo.sqlite');
     fs.writeFileSync(junkPath, 'not a sqlite database');
 
-    const summary = handleImportOpenlp(db, server, fakeWindow, [junkPath]);
+    const summary = handleImportOpenlpFiles(db, server, fakeWindow, 'bible', [junkPath]);
 
     expect(summary.sources[0].kind).toBe('unknown');
+    expect(summary.sources[0].errors[0].reason).toBe('not an OpenLP Bible database');
   });
 
   it('handles an import that produces more than 130000 errors', () => {
     const fakeWindow = { webContents: { send: vi.fn() } } as any;
     const biblePath = createFixtureBibleDbWithManyErrors(130000);
 
-    let summary: ReturnType<typeof handleImportOpenlp>;
+    let summary: ReturnType<typeof handleImportOpenlpFiles>;
     expect(() => {
-      summary = handleImportOpenlp(db, server, fakeWindow, [biblePath]);
+      summary = handleImportOpenlpFiles(db, server, fakeWindow, 'bible', [biblePath]);
     }).not.toThrow();
 
     expect(summary!.skipped).toBe(130000);
     expect(summary!.errors.length).toBeLessThan(1000);
+  });
+});
+
+describe('handleDeleteTranslation', () => {
+  function installKjvAndNet() {
+    upsertTranslation(db, {
+      code: 'KJV',
+      name: 'King James Version',
+      source: 'bundled',
+      books: [{ bookCode: 'JHN', verses: [[3, 16, 'For God so loved the world.'], [3, 17, 'For God sent not his Son.']] }],
+    });
+    upsertTranslation(db, {
+      code: 'NET',
+      name: 'New English Translation',
+      source: 'openlp',
+      books: [{ bookCode: 'JHN', verses: [[3, 16, 'For this is the way God loved the world.']] }],
+    });
+  }
+
+  it('unstages and clears live state when the deleted translation is staged and live', () => {
+    installKjvAndNet();
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    const kjvJohn = findBooksByName(db, 'John', 'KJV')[0];
+    const netJohn = findBooksByName(db, 'John', 'NET')[0];
+    const verse = db.prepare(`SELECT id FROM bible_verses WHERE book_id = ? AND verse = 16`).get(kjvJohn.id) as { id: number };
+    const stagedKjv = addStagedItem(db, 'bible', kjvJohn.id, 3);
+    const stagedNet = addStagedItem(db, 'bible', netJohn.id, 3);
+    handleSetLiveState(db, server, fakeWindow, stagedKjv.id, verse.id, null);
+    const broadcastSpy = vi.spyOn(server, 'broadcastLiveUpdate');
+
+    handleDeleteTranslation(db, server, fakeWindow, 'KJV');
+
+    expect(getLiveState(db)).toMatchObject({ stagedItemId: null, verseOrBlockId: null, reference: null });
+    expect(broadcastSpy).toHaveBeenCalled();
+    expect(fakeWindow.webContents.send).toHaveBeenLastCalledWith(IpcChannels.LiveStateChanged, getLiveState(db));
+    const remaining = db.prepare(`SELECT id FROM staged_items`).all() as { id: number }[];
+    expect(remaining.map((r) => r.id)).toEqual([stagedNet.id]);
+  });
+
+  it('falls back to the next translation when the active one is deleted', () => {
+    installKjvAndNet();
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    setSetting(db, SETTING_TRANSLATION, 'KJV');
+
+    expect(handleDeleteTranslation(db, server, fakeWindow, 'KJV')).toEqual({ activeTranslation: 'NET' });
+    expect(getSetting(db, SETTING_TRANSLATION)).toBe('NET');
+  });
+
+  it('leaves the active translation alone when another one is deleted', () => {
+    installKjvAndNet();
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    setSetting(db, SETTING_TRANSLATION, 'NET');
+
+    expect(handleDeleteTranslation(db, server, fakeWindow, 'KJV')).toEqual({ activeTranslation: 'NET' });
+    expect(getSetting(db, SETTING_TRANSLATION)).toBe('NET');
+  });
+
+  it('reports no active translation once the last one is gone', () => {
+    installKjvAndNet();
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    handleDeleteTranslation(db, server, fakeWindow, 'NET');
+    expect(handleDeleteTranslation(db, server, fakeWindow, 'KJV')).toEqual({ activeTranslation: null });
+  });
+});
+
+describe('handleRestoreBundled', () => {
+  function tinyBundleDir(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-bundled-'));
+    fs.writeFileSync(
+      path.join(dir, 'kjv.json'),
+      JSON.stringify({
+        code: 'KJV',
+        name: 'King James Version',
+        source: 'bundled',
+        licenseNote: 'Public domain (US).',
+        books: [{ bookCode: 'JHN', name: 'John', verses: [[3, 16, 'For God so loved the world.']] }],
+      })
+    );
+    return dir;
+  }
+
+  it('brings the bundled KJV back after the operator deleted it', () => {
+    const dir = tinyBundleDir();
+    const fakeWindow = { webContents: { send: vi.fn() } } as any;
+    seedBundledBibles(db, { dir });
+    handleDeleteTranslation(db, server, fakeWindow, 'KJV');
+    // A normal launch-time seed must not resurrect it...
+    seedBundledBibles(db, { dir });
+    expect(listTranslationCodes(db)).toEqual([]);
+
+    // ...but Restore does.
+    const result = handleRestoreBundled(db, dir, 'KJV');
+
+    expect(result).toMatchObject({ translation: 'KJV', imported: 1, skipped: 0 });
+    expect(listTranslationCodes(db)).toEqual(['KJV']);
+  });
+
+  it('fails plainly for a code that is not bundled', () => {
+    expect(() => handleRestoreBundled(db, tinyBundleDir(), 'NIV')).toThrow(/no bundled Bible with the code NIV/);
+  });
+});
+
+describe('openlpDataDir', () => {
+  it("points the file dialog at OpenLP's own data folder when it exists", () => {
+    const appData = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-appdata-'));
+    fs.mkdirSync(path.join(appData, 'openlp', 'data', 'bibles'), { recursive: true });
+    expect(openlpDataDir(appData, 'bible')).toBe(path.join(appData, 'openlp', 'data', 'bibles'));
+    expect(openlpDataDir(appData, 'songs')).toBeUndefined();
   });
 });
 

@@ -1,4 +1,5 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { app, ipcMain, dialog, BrowserWindow } from 'electron';
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import Database from 'better-sqlite3';
@@ -9,11 +10,12 @@ import * as stagedRepo from '../db/stagedItemsRepository';
 import * as liveRepo from '../db/liveStateRepository';
 import * as stylesRepo from '../db/outputStylesRepository';
 import * as settingsRepo from '../db/settingsRepository';
-import { importOpenlpSongs } from '../import/openlpSongsImporter';
-import { importOpenlpBible } from '../import/openlpBibleImporter';
-import { detectOpenlpFile } from '../import/detectOpenlpFile';
+import { importOpenlpSongs } from '../import/openlp/songs';
+import { importOpenlpBible } from '../import/openlp/bible';
+import { detectOpenlpFile, OpenlpFileKind } from '../import/openlp/detect';
+import { seedBundledBibles } from '../content/bundledBibles';
 import { ServerHandle } from '../server/server';
-import { ContentType, ImportSourceSummary, ImportSummary, LiveState, StagedItemType, Theme } from '../../shared/types';
+import { ContentType, ImportResult, ImportSummary, LiveState, StagedItemType, Theme } from '../../shared/types';
 
 /** Single funnel for every live-state change: persist, push to OBS, push to the UI. */
 function publishLiveState(
@@ -143,73 +145,135 @@ export function handleDeleteSongBlock(
 }
 
 /**
- * Files are classified by looking inside them, never by filename — a bible file under
- * `C:\Users\songleader\...` would otherwise be imported as a song library.
- *
- * The song importer deletes and reinserts a song's blocks with NEW rowids on every
- * import (see openlpSongsImporter), so a live_state.verse_or_block_id captured before
- * an import can dangle afterwards — pointing at a row the database no longer has. If
- * anything was live when the import ran, clear live state through the same funnel as
- * every other live mutation (persist + broadcast to OBS + notify the renderer), rather
- * than leaving OBS showing content the app no longer tracks.
+ * Deleting a translation must not leave OBS showing scripture the app no longer has:
+ * every staged item that pointed at one of its books is unstaged (which clears live state
+ * through the funnel if it was live). If it was the active translation, the setting moves
+ * to the fallback (KJV if present, otherwise the first installed). Returns the active
+ * translation afterwards so the renderer can follow.
  */
+export function handleDeleteTranslation(
+  db: Database.Database,
+  server: ServerHandle,
+  mainWindow: BrowserWindow,
+  code: string
+): { activeTranslation: string | null } {
+  const before = settingsRepo.getActiveTranslation(db, bibleRepo.listTranslationCodes(db));
+  const { removedBookIds } = bibleRepo.deleteTranslation(db, code);
+  if (removedBookIds.length > 0) {
+    const staged = db
+      .prepare(`SELECT id FROM staged_items WHERE type = 'bible' AND ref_id IN (SELECT value FROM json_each(?))`)
+      .all(JSON.stringify(removedBookIds)) as { id: number }[];
+    for (const item of staged) handleUnstageItem(db, server, mainWindow, item.id);
+  }
+  const activeTranslation = settingsRepo.getActiveTranslation(db, bibleRepo.listTranslationCodes(db));
+  if (before != null && before.toLowerCase() === code.toLowerCase()) {
+    if (activeTranslation) settingsRepo.setSetting(db, settingsRepo.SETTING_TRANSLATION, activeTranslation);
+  }
+  return { activeTranslation };
+}
+
+/** *Restore bundled KJV*: re-runs the bundled seed for one code, ignoring the seeded flag. */
+export function handleRestoreBundled(db: Database.Database, biblesDir: string, code: string): ImportResult {
+  const [result] = seedBundledBibles(db, { dir: biblesDir, force: true, code });
+  if (!result) throw new Error(`ServiceFlow has no bundled Bible with the code ${code}`);
+  return result;
+}
+
+export type OpenlpImportKind = 'bible' | 'songs';
+
+/**
+ * Where OpenLP keeps its data: `%APPDATA%\openlp\data\{bibles,songs}` on Windows. Used
+ * as the file dialog's starting folder; undefined (the dialog's own default) if it
+ * doesn't exist on this machine.
+ */
+export function openlpDataDir(appDataDir: string, kind: OpenlpImportKind): string | undefined {
+  const dir = path.join(appDataDir, 'openlp', 'data', kind === 'bible' ? 'bibles' : 'songs');
+  return fs.existsSync(dir) ? dir : undefined;
+}
+
 // A file with a malformed schema can produce far more error rows than the five the UI
 // ever shows (I-05: 130k+ is reproducible and blows the call stack if spread into
 // push). Cap what crosses IPC to a sane bound; `skipped` on each summary still carries
 // the true total regardless of how many individual errors survive the cap.
 const MAX_REPORTED_ERRORS_PER_SOURCE = 50;
 
-export function handleImportOpenlp(
+// Import summaries cross into the renderer and may be read aloud or screenshotted; never
+// let the operator's home directory (C:\Users\<name>) ride along in an error message.
+function redactHome(message: string): string {
+  const home = os.homedir();
+  return home ? message.split(home).join('~') : message;
+}
+
+const WRONG_KIND_MESSAGE: Record<OpenlpImportKind, Partial<Record<OpenlpFileKind, string>>> = {
+  bible: {
+    songs: 'This looks like an OpenLP song database — use Library → Songs → Import from OpenLP…',
+    unknown: 'not an OpenLP Bible database',
+  },
+  songs: {
+    bible: 'This looks like an OpenLP Bible — use Library → Bibles → Import from OpenLP…',
+    unknown: 'not an OpenLP song database',
+  },
+};
+
+function failedSource(filePath: string, reason: string): ImportResult {
+  const file = path.basename(filePath);
+  return { file, kind: 'unknown', imported: 0, skipped: 0, errors: [{ identifier: file, reason: redactHome(reason) }] };
+}
+
+/**
+ * One import entry point per content type, each placed next to the content it adds.
+ * Every picked file is checked with detectOpenlpFile — by looking inside it, never by its
+ * name — so a file of the wrong kind becomes a friendly per-file error while the rest of
+ * the batch still imports.
+ */
+export function handleImportOpenlpFiles(
   db: Database.Database,
   server: ServerHandle,
   mainWindow: BrowserWindow,
+  kind: OpenlpImportKind,
   filePaths: string[]
 ): ImportSummary {
   const combined: ImportSummary = { sources: [], imported: 0, skipped: 0, errors: [] };
   try {
     for (const filePath of filePaths) {
-      let result: ImportSourceSummary;
+      let result: ImportResult;
       try {
-        const kind = detectOpenlpFile(filePath);
-        if (kind === 'songs') {
-          result = importOpenlpSongs(db, filePath);
-        } else if (kind === 'bible') {
-          result = importOpenlpBible(db, filePath);
+        const detected = detectOpenlpFile(filePath);
+        if (detected !== kind) {
+          result = failedSource(filePath, WRONG_KIND_MESSAGE[kind][detected] ?? 'not an OpenLP database');
+          result.skipped = 1;
         } else {
-          result = {
-            file: path.basename(filePath),
-            kind: 'unknown',
-            imported: 0,
-            skipped: 1,
-            errors: [{ identifier: path.basename(filePath), reason: 'not an OpenLP song or bible database' }],
-          };
+          result = kind === 'songs' ? importOpenlpSongs(db, filePath) : importOpenlpBible(db, filePath);
         }
       } catch (err) {
         // One file with an unexpected schema (e.g. an older OpenLP version) must not
         // abort files that haven't been attempted yet.
-        result = {
-          file: path.basename(filePath),
-          kind: 'unknown',
-          imported: 0,
-          skipped: 0,
-          errors: [{ identifier: path.basename(filePath), reason: (err as Error).message }],
-        };
+        result = failedSource(filePath, (err as Error).message);
       }
 
-      const cappedErrors =
-        result.errors.length > MAX_REPORTED_ERRORS_PER_SOURCE
-          ? result.errors.slice(0, MAX_REPORTED_ERRORS_PER_SOURCE)
-          : result.errors;
+      const cappedErrors = result.errors
+        .slice(0, MAX_REPORTED_ERRORS_PER_SOURCE)
+        .map((e) => ({ identifier: redactHome(e.identifier), reason: redactHome(e.reason) }));
       combined.sources.push({ ...result, errors: cappedErrors });
       combined.imported += result.imported;
       combined.skipped += result.skipped;
       for (const error of cappedErrors) combined.errors.push(error);
     }
   } finally {
-    // Must run even if something above throws unexpectedly -- otherwise live_state can
-    // dangle at a rowid the re-inserted blocks no longer use (see the doc comment above).
-    if (liveRepo.getLiveState(db).stagedItemId !== null) {
-      publishLiveState(server, mainWindow, liveRepo.clearLiveState(db));
+    // The song write path replaces a song's blocks with NEW rowids on every import, so a
+    // live_state.verse_or_block_id captured before a song import can dangle afterwards.
+    // If a song was live, clear live state through the funnel (persist + OBS + renderer).
+    // Must run even if something above throws unexpectedly. Bible imports upsert verses
+    // in place, so their ids — and a live verse — stay valid.
+    if (kind === 'songs') {
+      const live = liveRepo.getLiveState(db);
+      const liveItem =
+        live.stagedItemId !== null
+          ? (db.prepare(`SELECT type FROM staged_items WHERE id = ?`).get(live.stagedItemId) as
+              | { type: StagedItemType }
+              | undefined)
+          : undefined;
+      if (liveItem?.type === 'song') publishLiveState(server, mainWindow, liveRepo.clearLiveState(db));
     }
   }
 
@@ -241,15 +305,20 @@ export function registerIpcHandlers(
   db: Database.Database,
   server: ServerHandle,
   mainWindow: BrowserWindow,
-  port: number
+  port: number,
+  biblesDir: string
 ): void {
   ipcMain.handle(IpcChannels.ListTranslations, () => bibleRepo.listTranslations(db));
   ipcMain.handle(IpcChannels.GetActiveTranslation, () =>
-    settingsRepo.getActiveTranslation(db, bibleRepo.listTranslations(db))
+    settingsRepo.getActiveTranslation(db, bibleRepo.listTranslationCodes(db))
   );
-  ipcMain.handle(IpcChannels.SetActiveTranslation, (_e, translation: string) =>
-    settingsRepo.setSetting(db, settingsRepo.SETTING_TRANSLATION, translation)
+  ipcMain.handle(IpcChannels.SetActiveTranslation, (_e, code: string) =>
+    settingsRepo.setSetting(db, settingsRepo.SETTING_TRANSLATION, code)
   );
+  ipcMain.handle(IpcChannels.DeleteTranslation, (_e, code: string) =>
+    handleDeleteTranslation(db, server, mainWindow, code)
+  );
+  ipcMain.handle(IpcChannels.RestoreBundledBible, (_e, code: string) => handleRestoreBundled(db, biblesDir, code));
   ipcMain.handle(IpcChannels.GetTheme, () => settingsRepo.getTheme(db));
   ipcMain.handle(IpcChannels.SetTheme, (_e, theme: Theme) =>
     settingsRepo.setSetting(db, settingsRepo.SETTING_THEME, theme)
@@ -309,14 +378,19 @@ export function registerIpcHandlers(
     handleSetActiveStyle(db, server, mainWindow, contentType, styleId)
   );
   ipcMain.handle(IpcChannels.GetServerUrls, () => getServerUrls(port));
-  ipcMain.handle(IpcChannels.PickOpenlpFiles, async () => {
+  ipcMain.handle(IpcChannels.PickOpenlp, async (_e, kind: OpenlpImportKind) => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'SQLite Database', extensions: ['sqlite'] }],
+      title: kind === 'bible' ? 'Import Bibles from OpenLP' : 'Import songs from OpenLP',
+      defaultPath: openlpDataDir(app.getPath('appData'), kind),
+      properties: kind === 'bible' ? ['openFile', 'multiSelections'] : ['openFile'],
+      filters: [{ name: 'OpenLP database', extensions: ['sqlite'] }],
     });
     return result.canceled ? [] : result.filePaths;
   });
-  ipcMain.handle(IpcChannels.ImportOpenlp, (_e, filePaths: string[]) =>
-    handleImportOpenlp(db, server, mainWindow, filePaths)
+  ipcMain.handle(IpcChannels.ImportOpenlpBibles, (_e, filePaths: string[]) =>
+    handleImportOpenlpFiles(db, server, mainWindow, 'bible', filePaths)
+  );
+  ipcMain.handle(IpcChannels.ImportOpenlpSongs, (_e, filePath: string) =>
+    handleImportOpenlpFiles(db, server, mainWindow, 'songs', [filePath])
   );
 }

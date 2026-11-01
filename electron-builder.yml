@@ -6,6 +6,11 @@ directories:
 files:
   - dist/**/*
   - package.json
+# The bundled Bibles (resources/bibles/*.json) ship outside app.asar and are read by
+# src/main/content/bundledBibles.ts from <resourcesPath>/bibles.
+extraResources:
+  - from: resources/bibles
+    to: bibles
 asarUnpack:
   - '**/*.node'
 win:

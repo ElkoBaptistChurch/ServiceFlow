@@ -92,7 +92,10 @@ function mockMainProcessModules(
   const clearStagedItems = vi.fn();
   const getSetting = vi.fn(() => opts.storedPort ?? null);
   const setSetting = vi.fn();
+  const seedBundledBibles = vi.fn(() => []);
+  const bundledBiblesDir = vi.fn(() => '/fake/resources/bibles');
 
+  vi.doMock('../../../src/main/content/bundledBibles', () => ({ seedBundledBibles, bundledBiblesDir }));
   vi.doMock('../../../src/main/db/client', () => ({ openDatabase }));
   vi.doMock('../../../src/main/db/outputStylesRepository', () => ({ seedDefaultOutputStyles }));
   vi.doMock('../../../src/main/db/liveStateRepository', () => ({ getLiveState, setOutputHidden, clearLiveSelection }));
@@ -114,6 +117,8 @@ function mockMainProcessModules(
     clearStagedItems,
     getSetting,
     setSetting,
+    seedBundledBibles,
+    bundledBiblesDir,
   };
 }
 
@@ -177,6 +182,25 @@ describe('main/index.ts startup orchestration', () => {
     expect(modules.getTheme).toHaveBeenCalled();
     const constructorArgs = electron.BrowserWindow.mock.calls[0][0];
     expect(constructorArgs.backgroundColor).toBe('#17140f');
+  });
+
+  // D12: a fresh install must open with KJV already there, so the seed has to land
+  // before the window (and its first translation lookup) exists.
+  it('seeds the bundled Bibles from the bundled directory before creating the window', async () => {
+    const electron = mockElectron(true);
+    const modules = mockMainProcessModules();
+
+    await import('../../../src/main/index');
+
+    await vi.waitFor(() => {
+      expect(electron.BrowserWindow).toHaveBeenCalled();
+    });
+
+    expect(modules.seedBundledBibles).toHaveBeenCalledWith({ fakeDb: true }, { dir: '/fake/resources/bibles' });
+    expect(modules.seedBundledBibles.mock.invocationCallOrder[0]).toBeLessThan(
+      electron.BrowserWindow.mock.invocationCallOrder[0]
+    );
+    expect(modules.registerIpcHandlers.mock.calls[0][4]).toBe('/fake/resources/bibles');
   });
 
   it('uses the light background color when the persisted theme is light', async () => {
