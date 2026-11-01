@@ -26,6 +26,10 @@ ServiceFlow.
 - Reuse the church's existing OpenLP song and Bible libraries (KJV, NET and
   NKJV are all present) via a one-time, re-runnable import, with the active
   translation selectable in Settings.
+  **Superseded (2026-11-01):** content no longer comes only from the OpenLP importer.
+  A public-domain KJV ships with the app, songs can be written in-app, and OpenLP is
+  one optional import source (Library → Bibles / Library → Songs); see the
+  [native content model plan](../plans/2026-11-01-native-content-model.md) and decision D12 in [`decisions.md`](../../../decisions.md).
 - Put a verse or lyric block on the stream, and take it off again, without
   ever showing the congregation the wrong reference.
 - OBS integration via a standard Browser Source — no custom OBS plugin.
@@ -62,6 +66,8 @@ files:
 - An in-app confidence-monitor preview of the OBS output — the operator uses
   OBS's own source preview.
 - In-app song creation/editing — v1 presents from the imported library only.
+  **Superseded (2026-11-01):** songs are created and edited in Library → Songs; see the
+  [native content model plan](../plans/2026-11-01-native-content-model.md) and decision D12 in [`decisions.md`](../../../decisions.md).
 - Preserving OpenLP's suggested verse order/repeats for songs — v1 shows each
   block once, in document order.
 - Auto-update, code signing, multi-operator support, NDI or window-capture
@@ -167,6 +173,11 @@ SQLite database (`better-sqlite3`), owned exclusively by ServiceFlow:
   active Bible translation here.
 
 ## OpenLP import
+
+> **Superseded in part (2026-11-01):** the import moved out of Settings into
+> Library → Bibles and Library → Songs, each accepting only its own kind of file, and
+> books are now keyed by canonical USFM code rather than `source_book_id`. See the
+> [native content model plan](../plans/2026-11-01-native-content-model.md) and decision D12 in [`decisions.md`](../../../decisions.md).
 
 A one-time, re-runnable action (Settings > "Import from OpenLP", available
 in-app so a non-technical volunteer can use it, not a separate CLI tool).

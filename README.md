@@ -114,32 +114,65 @@ machines connected to the same church Wi-Fi/network:
   same network and that no firewall prompt was dismissed with "block" instead
   of "allow" the first time ServiceFlow ran.
 
-## 5. Importing from OpenLP
+## 5. Bibles and songs
 
-ServiceFlow reuses the church's existing OpenLP song and Bible files rather
-than requiring content to be re-entered by hand.
+### Bibles
 
-1. In ServiceFlow, go to **Settings → Import from OpenLP**.
-2. Click **"Import from OpenLP"** and select the OpenLP database file(s) —
-   the songs database and any Bible translation files. ServiceFlow figures
-   out which file is which automatically; you don't need to sort them first.
-3. When the import finishes, a summary lists each file, how many songs or
-   verses were imported, and anything skipped.
+**A complete King James Version comes preinstalled** — all 66 books, ready to
+search the first time ServiceFlow opens. (It's public domain in the US.)
 
-**Re-running the import is always safe.** If OpenLP's content changes later
-(new songs added, a fuller Bible translation downloaded), just repeat the
-same import — it replaces the previous data for the same source cleanly and
-won't create duplicates. The one thing to avoid is importing in the middle of
-a live service, since anything currently on air could reference content that
-import step replaces.
+Go to **Library → Bibles** to see which translations are installed. Each row
+shows where it came from (**Bundled**, or **OpenLP** if imported), how many
+books and verses it has, and a **Partial** badge if it's missing a large part
+of the Bible. Choose which translation search uses in **Settings → Bible
+translation**.
+
+- **Delete** removes a translation. Anything from it in today's service list
+  is taken off the list — and off the screen, if it was showing.
+- If the bundled KJV has been deleted, **Restore bundled KJV** brings it back.
+  Deleting it is otherwise permanent: it won't reappear on the next launch.
+
+#### Importing Bibles from OpenLP (optional)
+
+1. In **Library → Bibles**, click **Import from OpenLP…**. The file picker
+   opens in OpenLP's own Bible folder (`%APPDATA%\openlp\data\bibles`).
+2. Select one or more Bible files (`.sqlite`).
+3. A summary lists each file, how many verses were imported, and anything
+   skipped and why.
+
+Importing OpenLP's KJV updates the preinstalled KJV in place — you won't get
+two KJVs — and its badge changes to **OpenLP**. *Restore bundled KJV* only
+appears once there's no KJV at all, so to go back, delete it and restore.
+
+### Songs
+
+Songs live in **Library → Songs**. Click **+ New Song** to write one: give it a
+title (and CCLI number, if it has one), then add verses, choruses and so on.
+
+#### Importing songs from OpenLP (optional)
+
+1. In **Library → Songs**, click **Import from OpenLP…**. The file picker opens
+   in OpenLP's song folder (`%APPDATA%\openlp\data\songs`).
+2. Select OpenLP's song database (`songs.sqlite`).
+3. A summary shows how many songs arrived and anything skipped.
+
+Picking the wrong kind of file is harmless: a Bible picked under Songs (or the
+other way round) is refused with a message saying which button to use.
+
+**Re-running an import is always safe.** If OpenLP's content changes later
+(new songs, a fuller Bible download), import the same file again — it updates
+what's there and won't create duplicates. Bible imports never delete verses,
+so a partial file can't erase a fuller one. Avoid importing songs in the
+middle of a live service: a song on screen is taken off when its song library
+is re-imported.
 
 ## Known limits
 
 - **NET and NKJV are partial sample files as shipped with the church's OpenLP
-  install** — 106 and 152 verses respectively, versus KJV's full 36,503.
-  Until fuller NET/NKJV database files are downloaded (in OpenLP) and
-  re-imported into ServiceFlow, those two translations will look almost
-  entirely empty when browsing or searching. KJV is complete and unaffected.
+  install** — 106 and 152 verses respectively. If imported, Library → Bibles
+  marks them **Partial**, and they will look almost entirely empty when
+  browsing or searching until fuller files are downloaded in OpenLP and
+  re-imported. The preinstalled KJV is complete (31,102 verses) and unaffected.
 - This is a v1 build: no auto-update and no code signing (hence the
   SmartScreen warning above), single-operator use only, and no in-app preview
   of the OBS output — use OBS's own source preview to confirm what's live.
@@ -148,5 +181,7 @@ import step replaces.
   today — all 556 imported titles are distinct — but worth knowing if the
   church's song list grows.
 - Because the NKJV file is only a partial sample, browsing to a book it has
-  no verses for (Romans, for example) shows an empty chapter list with no
-  explanation. KJV is unaffected.
+  no verses for (Romans, for example) shows an empty chapter list. The
+  **Partial** badge in Library → Bibles is the warning. KJV is unaffected.
+- The preinstalled KJV is the 66-book Protestant canon. OpenLP's KJV also
+  carries the Apocrypha; importing it adds those books.
