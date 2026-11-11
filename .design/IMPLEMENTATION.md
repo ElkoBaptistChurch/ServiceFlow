@@ -45,8 +45,9 @@ Note the `--ink` / `--bg` pair inverts the Blank button correctly in both themes
 (dark fill + light text in light mode, light fill + dark text in dark mode). That is
 deliberate — it keeps Blank the strongest control on screen either way.
 
-Fonts are Source Serif 4 (headings, scripture, card titles) and Source Sans 3 (UI),
-both with fallback stacks as written in the mockups.
+Fonts: the mockups use Source Serif 4 (headings, scripture, card titles), Source Sans 3 (UI)
+and Outfit (logo). The app does not: it uses the Windows system font throughout via the
+`--font-ui` token. See decisions.md D13.
 
 ## Theme persistence
 

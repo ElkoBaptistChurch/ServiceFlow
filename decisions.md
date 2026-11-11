@@ -277,3 +277,26 @@ baseline) rather than migrated. Developers delete their local `serviceflow.db`.
   Canonical codes cannot shift between editions the way OpenLP's row ids could.
 - **I-09b** (two files with no metadata name and the same basename must not collapse into one
   translation) — moves into the OpenLP adapter unchanged.
+
+## D13 — One UI font: the Windows system font
+
+**Date:** 2026-11-10 · **Status:** Adopted
+
+The operator console used three web fonts from Google Fonts: Source Serif 4 for scripture and
+card titles, Source Sans 3 for controls, Outfit for the logo and Settings headings. Two problems:
+
+- They were fetched from `fonts.googleapis.com` at runtime. An offline booth PC fell back to
+  Georgia / Segoe UI, so the app looked different depending on the network.
+- Chromium on Windows draws downloaded fonts noticeably softer than Windows' own fonts at the
+  12–17px sizes the panels use. In a side-by-side trial of 15 open-licence sans faces the
+  operator rejected all of them; Segoe UI was preferred.
+
+**Decision:** the whole renderer uses one stack, `--font-ui: 'Segoe UI Variable Text',
+'Segoe UI', system-ui, sans-serif` (app.css `:root`). Serif-for-scripture is dropped; content
+vs. controls is carried by size, weight and colour instead. Nothing is downloaded or bundled,
+and the Google Fonts links are removed from `index.html`. Off Windows (dev on Linux/macOS) the
+app shows that system's font, which is accepted since ServiceFlow ships for Windows only.
+
+**Scope:** operator UI. The stream output (`src/output/output.css`) already used Segoe UI, so
+the console and what goes on the stream now match.
+
