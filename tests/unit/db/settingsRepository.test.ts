@@ -8,6 +8,8 @@ import {
   SETTING_TRANSLATION,
   getTheme,
   SETTING_THEME,
+  getDensity,
+  SETTING_DENSITY,
 } from '../../../src/main/db/settingsRepository';
 
 let db: Database.Database;
@@ -82,6 +84,22 @@ describe('settingsRepository', () => {
       expect(getTheme(db)).toBe('dark');
       setSetting(db, SETTING_THEME, 'light');
       expect(getTheme(db)).toBe('light');
+    });
+  });
+
+  describe('getDensity', () => {
+    it('defaults to compact when no density is stored', () => {
+      expect(getDensity(db)).toBe('compact');
+    });
+
+    it('returns the stored density when it is a recognised value', () => {
+      setSetting(db, SETTING_DENSITY, 'spacious');
+      expect(getDensity(db)).toBe('spacious');
+    });
+
+    it('defaults to compact when the stored value is not recognised', () => {
+      setSetting(db, SETTING_DENSITY, 'cozy');
+      expect(getDensity(db)).toBe('compact');
     });
   });
 });

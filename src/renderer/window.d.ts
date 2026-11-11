@@ -1,4 +1,4 @@
-import type { BibleBook, BibleSearchResult, BibleTranslation, ContentType, ImportResult, LiveState, OutputStyle, Song, SongBlock, SongSearchResult, StagedItem, StagedItemType, ImportSummary, BibleVerse, Theme } from '../shared/types';
+import type { BibleBook, BibleSearchResult, BibleTranslation, ContentType, ImportResult, LiveState, OutputStyle, Song, SongBlock, SongSearchResult, StagedItem, StagedItemType, ImportSummary, BibleVerse, Density, Theme } from '../shared/types';
 
 export interface ServiceFlowApi {
   listTranslations(): Promise<BibleTranslation[]>;
@@ -12,6 +12,8 @@ export interface ServiceFlowApi {
   initialTheme: Theme;
   getTheme(): Promise<Theme>;
   setTheme(theme: Theme): Promise<void>;
+  getDensity(): Promise<Density>;
+  setDensity(density: Density): Promise<void>;
   findBibleBooks(query: string, translationCode: string): Promise<BibleBook[]>;
   /** bookId is always BibleBook.id — never an OpenLP source book id. */
   getChaptersForBook(bookId: number): Promise<number[]>;

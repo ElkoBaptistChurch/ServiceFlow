@@ -255,6 +255,32 @@ button {
   color: var(--bg);
 }
 
+.density-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+}
+
+.density-toggle__cell {
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted-2);
+}
+
+.density-toggle__cell[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--bg);
+}
+
 /* ---------- Body / columns ---------- */
 
 .app-body {
@@ -882,32 +908,66 @@ button {
   color: var(--muted-2);
 }
 
+/* Verse/block list density. Compact is the baseline; Settings → Verse list density sets
+   data-density='spacious' on the root to loosen it. Operator UI only — the stream output
+   has its own styles. */
+:root {
+  --entry-list-pad: 8px 10px;
+  --entry-list-gap: 2px;
+  --entry-pad: 6px 12px;
+  --entry-col-gap: 12px;
+  --entry-radius: 8px;
+  --entry-num-size: 12px;
+  --entry-num-width: 22px;
+  --entry-text-size: 15px;
+  --entry-text-lh: 1.45;
+  --entry-live-pad: 10px 12px;
+  --entry-live-text-size: 17px;
+  --entry-live-text-lh: 1.4;
+  --entry-live-gap: 4px;
+}
+
+:root[data-density='spacious'] {
+  --entry-list-pad: 14px 18px;
+  --entry-list-gap: 4px;
+  --entry-pad: 12px 18px;
+  --entry-col-gap: 16px;
+  --entry-radius: 10px;
+  --entry-num-size: 14px;
+  --entry-num-width: 26px;
+  --entry-text-size: 17px;
+  --entry-text-lh: 1.55;
+  --entry-live-pad: 16px 18px;
+  --entry-live-text-size: 20px;
+  --entry-live-text-lh: 1.45;
+  --entry-live-gap: 8px;
+}
+
 .content-pane__body {
   list-style: none;
   margin: 0;
   flex-grow: 1;
   min-height: 0;
-  padding: 18px 20px;
+  padding: var(--entry-list-pad);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--entry-list-gap);
   overflow-y: auto;
   outline: none;
 }
 
 .entry-row {
   display: flex;
-  gap: 18px;
-  border-radius: 10px;
+  border-radius: var(--entry-radius);
 }
 
 .entry-row__btn {
   display: flex;
-  gap: 18px;
+  gap: var(--entry-col-gap);
   width: 100%;
   align-items: flex-start;
-  padding: 16px 20px;
-  border-radius: 10px;
+  padding: var(--entry-pad);
+  border-radius: var(--entry-radius);
   background: none;
   border: none;
   cursor: pointer;
@@ -917,18 +977,20 @@ button {
 
 .entry-row__num {
   font-family: 'Source Serif 4', Georgia, serif;
-  font-size: 15px;
+  font-size: var(--entry-num-size);
+  /* One text line tall, so the number sits centred on the verse's first line. */
+  line-height: calc(var(--entry-text-size) * var(--entry-text-lh));
   font-weight: 600;
   color: var(--muted-3);
-  width: 28px;
+  width: var(--entry-num-width);
   flex-shrink: 0;
   text-align: right;
 }
 
 .entry-row__text {
   font-family: 'Source Serif 4', Georgia, serif;
-  font-size: 17px;
-  line-height: 1.6;
+  font-size: var(--entry-text-size);
+  line-height: var(--entry-text-lh);
   color: var(--ink-3);
   text-wrap: pretty;
 }
@@ -960,28 +1022,29 @@ button {
 }
 
 .entry-row--live .entry-row__btn {
-  padding: 22px 20px;
-  border-radius: 12px;
+  padding: var(--entry-live-pad);
+  border-radius: var(--entry-radius);
   background: var(--tint);
   border: 1px solid var(--border-strong);
   flex-direction: row;
 }
 
 .entry-row--live .entry-row__num {
+  line-height: calc(var(--entry-live-text-size) * var(--entry-live-text-lh));
   font-weight: 700;
   color: var(--accent);
 }
 
 .entry-row--live .entry-row__text {
-  font-size: 22px;
-  line-height: 1.5;
+  font-size: var(--entry-live-text-size);
+  line-height: var(--entry-live-text-lh);
   color: var(--ink);
 }
 
 .entry-row__live-column {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--entry-live-gap);
 }
 
 .entry-row__live-label {
@@ -1706,8 +1769,8 @@ button {
     padding: 16px 18px 14px;
   }
 
-  .content-pane__body {
-    padding: 14px 16px;
+  :root[data-density='spacious'] {
+    --entry-list-pad: 12px 14px;
   }
 
   .content-pane__footer {

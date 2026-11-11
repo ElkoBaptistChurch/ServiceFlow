@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { Theme } from '../../shared/types';
+import { Density, Theme } from '../../shared/types';
 
 export function getSetting(db: Database.Database, key: string): string | null {
   const row = db.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(key) as { value: string } | undefined;
@@ -39,4 +39,15 @@ export const SETTING_THEME = 'theme';
 export function getTheme(db: Database.Database): Theme {
   const stored = getSetting(db, SETTING_THEME);
   return stored === 'light' || stored === 'dark' ? stored : 'light';
+}
+
+export const SETTING_DENSITY = 'density';
+
+/**
+ * The persisted content-pane density, defaulting to 'compact' when unset or
+ * unrecognised -- same fallback rule as getTheme.
+ */
+export function getDensity(db: Database.Database): Density {
+  const stored = getSetting(db, SETTING_DENSITY);
+  return stored === 'compact' || stored === 'spacious' ? stored : 'compact';
 }

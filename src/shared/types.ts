@@ -1,5 +1,7 @@
 export type ContentType = 'bible' | 'song';
 export type Theme = 'light' | 'dark';
+/** How tightly the operator's content pane packs verses/blocks. Operator UI only — never the output. */
+export type Density = 'compact' | 'spacious';
 export type Testament = 'OT' | 'NT' | 'AP';
 export type StagedItemType = ContentType;
 

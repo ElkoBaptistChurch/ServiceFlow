@@ -15,7 +15,7 @@ import { importOpenlpBible } from '../import/openlp/bible';
 import { detectOpenlpFile, OpenlpFileKind } from '../import/openlp/detect';
 import { seedBundledBibles } from '../content/bundledBibles';
 import { ServerHandle } from '../server/server';
-import { ContentType, ImportResult, ImportSummary, LiveState, StagedItemType, Theme } from '../../shared/types';
+import { ContentType, Density, ImportResult, ImportSummary, LiveState, StagedItemType, Theme } from '../../shared/types';
 
 /** Single funnel for every live-state change: persist, push to OBS, push to the UI. */
 function publishLiveState(
@@ -322,6 +322,10 @@ export function registerIpcHandlers(
   ipcMain.handle(IpcChannels.GetTheme, () => settingsRepo.getTheme(db));
   ipcMain.handle(IpcChannels.SetTheme, (_e, theme: Theme) =>
     settingsRepo.setSetting(db, settingsRepo.SETTING_THEME, theme)
+  );
+  ipcMain.handle(IpcChannels.GetDensity, () => settingsRepo.getDensity(db));
+  ipcMain.handle(IpcChannels.SetDensity, (_e, density: Density) =>
+    settingsRepo.setSetting(db, settingsRepo.SETTING_DENSITY, density)
   );
   ipcMain.handle(IpcChannels.FindBibleBooks, (_e, query: string, translation: string) =>
     bibleRepo.findBooksByName(db, query, translation)

@@ -26,6 +26,8 @@ beforeEach(() => {
     getActiveTranslation: vi.fn().mockResolvedValue('KJV'),
     getTheme: vi.fn().mockResolvedValue('light'),
     setTheme: vi.fn().mockResolvedValue(undefined),
+    getDensity: vi.fn().mockResolvedValue('compact'),
+    setDensity: vi.fn().mockResolvedValue(undefined),
     findBibleBooks: vi.fn().mockResolvedValue([]),
     findSongsByTitle: vi.fn().mockResolvedValue([]),
     findSongsByQuery: vi.fn().mockResolvedValue([]),

@@ -6,6 +6,8 @@ export const IpcChannels = {
   RestoreBundledBible: 'bible:restore-bundled',
   GetTheme: 'app:get-theme',
   SetTheme: 'app:set-theme',
+  GetDensity: 'app:get-density',
+  SetDensity: 'app:set-density',
   FindBibleBooks: 'bible:find-books',
   GetChaptersForBook: 'bible:get-chapters',
   GetVersesForChapter: 'bible:get-verses',

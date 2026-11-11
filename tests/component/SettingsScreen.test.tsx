@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import SettingsScreen from '../../src/renderer/components/SettingsScreen';
 
 beforeEach(() => {
@@ -123,5 +123,18 @@ describe('SettingsScreen', () => {
 
     expect(await screen.findByText(/could not load|unable to load|error/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /refresh/i })).toBeInTheDocument();
+  });
+
+  it('shows the current verse list density and reports a change', async () => {
+    const onDensityChange = vi.fn();
+    render(<SettingsScreen onTranslationChange={vi.fn()} density="compact" onDensityChange={onDensityChange} />);
+    const group = await screen.findByRole('group', { name: /verse list density/i });
+    const compact = within(group).getByRole('button', { name: 'Compact' });
+    const spacious = within(group).getByRole('button', { name: 'Spacious' });
+    expect(compact).toHaveAttribute('aria-pressed', 'true');
+    expect(spacious).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(spacious);
+    expect(onDensityChange).toHaveBeenCalledWith('spacious');
   });
 });

@@ -5,7 +5,7 @@ import ContentPane from './components/ContentPane';
 import LiveBanner from './components/LiveBanner';
 import SettingsScreen from './components/SettingsScreen';
 import LibraryScreen from './components/LibraryScreen';
-import type { LiveState, StagedItem, Theme } from '../shared/types';
+import type { Density, LiveState, StagedItem, Theme } from '../shared/types';
 import './styles/app.css';
 
 const EMPTY_LIVE_STATE: LiveState = {
@@ -28,6 +28,7 @@ export default function App() {
   // Seeded from the value that came in with the window so the toggle renders in the right
   // position on the first frame; the getTheme() effect below stays as the authority.
   const [theme, setThemeState] = useState<Theme>(() => window.api?.initialTheme ?? 'light');
+  const [density, setDensityState] = useState<Density>('compact');
   // The staged list must never be displaced by results (IMPLEMENTATION.md); search
   // renders its results as a popover over the service list, so App only needs to know
   // whether that popover is open to dim the list behind it.
@@ -93,6 +94,22 @@ export default function App() {
       setThemeState(t);
       document.documentElement.setAttribute('data-theme', t);
     });
+  }, []);
+
+  // Density is a root attribute (not a ContentPane prop) so the CSS can key off it the
+  // same way it does data-theme. 'compact' is the CSS baseline, so the brief moment
+  // before this resolves is simply the default.
+  useEffect(() => {
+    window.api.getDensity().then((d) => {
+      setDensityState(d);
+      document.documentElement.setAttribute('data-density', d);
+    });
+  }, []);
+
+  const chooseDensity = useCallback((next: Density) => {
+    setDensityState(next);
+    document.documentElement.setAttribute('data-density', next);
+    window.api.setDensity(next);
   }, []);
 
   const chooseTheme = useCallback((next: Theme) => {
@@ -282,7 +299,7 @@ export default function App() {
         </div>
       </header>
       {view === 'settings' ? (
-        <SettingsScreen onTranslationChange={setTranslation} />
+        <SettingsScreen onTranslationChange={setTranslation} density={density} onDensityChange={chooseDensity} />
       ) : view === 'library' ? (
         <LibraryScreen registerDirtyGuard={registerLibraryDirtyGuard} onContentChanged={refreshContent} />
       ) : (

@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react';
-import type { BibleTranslation, ContentType, OutputStyle } from '../../shared/types';
+import type { BibleTranslation, ContentType, Density, OutputStyle } from '../../shared/types';
 import StyleCard from './StyleCard';
 import StylePreviewModal from './StylePreviewModal';
 
 interface Props {
   /** Lets App re-render search/content against the newly chosen translation. */
   onTranslationChange: (translation: string) => void;
+  /** Owned by App because it is applied to the document root, like the theme. */
+  density?: Density;
+  onDensityChange?: (density: Density) => void;
 }
 
-export default function SettingsScreen({ onTranslationChange }: Props) {
+const DENSITY_OPTIONS: { value: Density; label: string; hint: string }[] = [
+  { value: 'compact', label: 'Compact', hint: 'Smaller text, tight rows — more verses on screen' },
+  { value: 'spacious', label: 'Spacious', hint: 'Larger text with more room between verses' },
+];
+
+export default function SettingsScreen({ onTranslationChange, density = 'compact', onDensityChange }: Props) {
   const [urls, setUrls] = useState<{ local: string; lan: string | null } | null>(null);
   // Distinguishes "haven't fetched yet" from "fetched and got nothing" so a failed or
   // null response shows an explicit error rather than silently hiding the whole section.
@@ -166,6 +174,25 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
         {translations.length === 0 && (
           <p className="settings-section__body">No Bibles installed — add one in Library → Bibles.</p>
         )}
+      </section>
+      <section className="settings-section">
+        <h3 className="settings-section__title">Verse list density</h3>
+        <div role="group" aria-label="Verse list density" className="density-toggle">
+          {DENSITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className="density-toggle__cell"
+              aria-pressed={density === opt.value}
+              onClick={() => onDensityChange?.(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="settings-section__body">
+          {DENSITY_OPTIONS.find((o) => o.value === density)?.hint}. Affects this screen only, not the stream output.
+        </p>
       </section>
       {styleSection('bible', bibleStyles)}
       {styleSection('song', songStyles)}
