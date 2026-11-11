@@ -14,14 +14,19 @@ export function setSetting(db: Database.Database, key: string, value: string): v
 
 export const SETTING_TRANSLATION = 'translation';
 
+/** The translation a fresh install (and any fallback) lands on when it's installed. */
+export const DEFAULT_TRANSLATION_CODE = 'KJV';
+
 /**
- * The active translation, falling back to the first imported one so the app is
- * never stuck pointing at a translation the operator never imported.
+ * The active translation code, falling back to KJV if present and otherwise to the first
+ * installed one, so the app is never stuck pointing at a translation that was deleted
+ * or never installed. Codes compare case-insensitively, like the bible_translations.code
+ * column; the installed spelling is what's returned.
  */
 export function getActiveTranslation(db: Database.Database, available: string[]): string | null {
-  const stored = getSetting(db, SETTING_TRANSLATION);
-  if (stored && available.includes(stored)) return stored;
-  return available[0] ?? null;
+  const find = (code: string | null) =>
+    code == null ? undefined : available.find((c) => c.toLowerCase() === code.toLowerCase());
+  return find(getSetting(db, SETTING_TRANSLATION)) ?? find(DEFAULT_TRANSLATION_CODE) ?? available[0] ?? null;
 }
 
 export const SETTING_THEME = 'theme';

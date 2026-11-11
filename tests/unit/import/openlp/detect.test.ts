@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { detectOpenlpFile } from '../../../src/main/import/detectOpenlpFile';
-import { createFixtureSongsDb, createFixtureBibleDb } from '../../helpers/openlpFixtures';
+import { detectOpenlpFile } from '../../../../src/main/import/openlp/detect';
+import { createFixtureSongsDb, createFixtureBibleDb } from '../../../helpers/openlpFixtures';
 
 describe('detectOpenlpFile', () => {
   it('identifies a songs database by its schema, not its filename', () => {

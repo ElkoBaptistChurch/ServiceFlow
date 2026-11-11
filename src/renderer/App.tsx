@@ -140,6 +140,15 @@ export default function App() {
 
   const clearFocusEntry = useCallback(() => setFocusEntryId(null), []);
 
+  // Library imports, deletes and restores can change which translation is active (deleting
+  // the active one falls back to the next), drop staged items, and clear live state — so
+  // re-read all three rather than trusting what this window last saw.
+  const refreshContent = useCallback(() => {
+    window.api.getActiveTranslation().then((t) => setTranslation(t ?? ''));
+    refreshStagedItems();
+    window.api.getLiveState().then(setLiveStateValue);
+  }, [refreshStagedItems]);
+
   // The IPC round-trip for setOutputHidden takes real time; a second Esc pressed before the
   // first response lands would otherwise read the same stale `liveState.hidden` closure and
   // send the SAME value twice (blank, blank) instead of alternating (blank, restore),
@@ -275,7 +284,7 @@ export default function App() {
       {view === 'settings' ? (
         <SettingsScreen onTranslationChange={setTranslation} />
       ) : view === 'library' ? (
-        <LibraryScreen registerDirtyGuard={registerLibraryDirtyGuard} />
+        <LibraryScreen registerDirtyGuard={registerLibraryDirtyGuard} onContentChanged={refreshContent} />
       ) : (
         <div className="app-body">
           <div className="sidebar">

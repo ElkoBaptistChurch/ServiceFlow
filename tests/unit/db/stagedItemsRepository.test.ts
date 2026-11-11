@@ -14,7 +14,10 @@ beforeEach(() => {
   db = new Database(':memory:');
   applySchema(db);
   db.prepare(
-    `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (1, 'KJV', 43, 'John', 'NT', 43)`
+    `INSERT INTO bible_translations (id, code, name, source, updated_at) VALUES (1, 'KJV', 'King James Version', 'bundled', '')`
+  ).run();
+  db.prepare(
+    `INSERT INTO bible_books (id, translation_id, book_code, name, testament, sort_order) VALUES (1, 1, 'JHN', 'John', 'NT', 43)`
   ).run();
   db.prepare(`INSERT INTO songs (id, title) VALUES (1, 'Amazing Grace')`).run();
 });

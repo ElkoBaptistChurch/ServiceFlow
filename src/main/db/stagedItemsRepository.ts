@@ -5,10 +5,12 @@ function labelFor(db: Database.Database, type: StagedItemType, refId: number, ch
   if (type === 'bible') {
     // refId is a bible_books.id, so the translation comes along for free — and showing
     // it makes a wrong-translation mistake visible before it reaches the stream.
-    const book = db.prepare(`SELECT name, translation FROM bible_books WHERE id = ?`).get(refId) as
-      | { name: string; translation: string }
-      | undefined;
-    return book ? `${book.name} ${chapter} (${book.translation})` : `Unknown ${chapter}`;
+    const book = db
+      .prepare(
+        `SELECT b.name, t.code FROM bible_books b JOIN bible_translations t ON t.id = b.translation_id WHERE b.id = ?`
+      )
+      .get(refId) as { name: string; code: string } | undefined;
+    return book ? `${book.name} ${chapter} (${book.code})` : `Unknown ${chapter}`;
   }
   const song = db.prepare(`SELECT title FROM songs WHERE id = ?`).get(refId) as { title: string } | undefined;
   return song ? song.title : 'Unknown Song';

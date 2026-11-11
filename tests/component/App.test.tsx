@@ -19,7 +19,10 @@ beforeEach(() => {
     onLiveStateChanged: vi.fn().mockReturnValue(() => {}),
     getServerUrls: vi.fn().mockResolvedValue({ local: 'http://localhost:4180/output', lan: null }),
     getOutputStyles: vi.fn().mockResolvedValue([]),
-    listTranslations: vi.fn().mockResolvedValue(['KJV']),
+    listTranslations: vi.fn().mockResolvedValue([
+      { code: 'KJV', name: 'King James Version', source: 'bundled', licenseNote: null, bookCount: 66, verseCount: 31102 },
+    ]),
+    deleteTranslation: vi.fn().mockResolvedValue({ activeTranslation: null }),
     getActiveTranslation: vi.fn().mockResolvedValue('KJV'),
     getTheme: vi.fn().mockResolvedValue('light'),
     setTheme: vi.fn().mockResolvedValue(undefined),
@@ -56,6 +59,38 @@ describe('App', () => {
     render(<App />);
     screen.getByRole('button', { name: /library/i }).click();
     expect(await screen.findByRole('button', { name: /new song/i })).toBeInTheDocument();
+  });
+
+  // Deleting the active translation in Library → Bibles moves the active setting, unstages
+  // its items and may clear live state — App must re-read all three, or search keeps
+  // querying a translation that no longer exists.
+  it('refreshes the active translation, staged list and live state after a Library change', async () => {
+    render(<App />);
+    await screen.findByText(/nothing live/i);
+    fireEvent.click(screen.getByRole('button', { name: /library/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Bibles' }));
+    const before = {
+      translation: (window.api.getActiveTranslation as any).mock.calls.length,
+      staged: (window.api.getStagedItems as any).mock.calls.length,
+      live: (window.api.getLiveState as any).mock.calls.length,
+    };
+    (window.api.getActiveTranslation as any).mockResolvedValue(null);
+    (window.api.listTranslations as any).mockResolvedValue([]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete KJV' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(window.api.deleteTranslation).toHaveBeenCalledWith('KJV'));
+    await waitFor(() => {
+      expect((window.api.getActiveTranslation as any).mock.calls.length).toBeGreaterThan(before.translation);
+      expect((window.api.getStagedItems as any).mock.calls.length).toBeGreaterThan(before.staged);
+      expect((window.api.getLiveState as any).mock.calls.length).toBeGreaterThan(before.live);
+    });
+
+    // Back on the operate screen, Bible search now says there is nothing to search.
+    fireEvent.click(screen.getByRole('button', { name: /operate/i }));
+    fireEvent.change(await screen.findByPlaceholderText(/search/i), { target: { value: 'john' } });
+    expect(await screen.findByText('No Bibles installed — open Library → Bibles')).toBeInTheDocument();
   });
 
   it('focuses the search box when "/" is pressed', async () => {
@@ -194,7 +229,7 @@ describe('App', () => {
   // ahead of the refreshed staged-items list. Real IPC has latency; a same-microtask mock
   // would let the effect lose every time and mask the bug.
   it('keeps the staged item selected after staging it from search', async () => {
-    const book = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT' as const, sortOrder: 43 };
+    const book = { id: 7, translationCode: 'KJV', bookCode: 'JHN', name: 'John', testament: 'NT' as const, sortOrder: 43 };
     const item = { id: 5, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' };
     let call = 0;
     (window.api.getStagedItems as any) = vi.fn(() => {
@@ -249,7 +284,7 @@ describe('App', () => {
   // landed on one of the popover's own buttons (e.g. after clicking a book) rather than
   // staying on the search input itself.
   it('closes the search popover on Escape instead of blanking, even with a popover button focused', async () => {
-    const book = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT' as const, sortOrder: 43 };
+    const book = { id: 7, translationCode: 'KJV', bookCode: 'JHN', name: 'John', testament: 'NT' as const, sortOrder: 43 };
     (window.api.findBibleBooks as any).mockResolvedValue([book]);
 
     render(<App />);
@@ -266,7 +301,7 @@ describe('App', () => {
   // R-14: the content-search highlight is a one-shot "look here", not a permanent marker
   // that re-fires the scroll on every unrelated refetch.
   it('clears the content-search highlight after scrolling to it', async () => {
-    const book = { id: 7, translation: 'KJV', sourceBookId: 43, name: 'John', testament: 'NT' as const, sortOrder: 43 };
+    const book = { id: 7, translationCode: 'KJV', bookCode: 'JHN', name: 'John', testament: 'NT' as const, sortOrder: 43 };
     const item = { id: 5, type: 'bible' as const, refId: 7, chapter: 3, position: 0, label: 'John 3 (KJV)' };
     (window.api.findBibleBooks as any).mockResolvedValue([book]);
     (window.api.searchBibleContent as any).mockResolvedValue([

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { Song, SongBlock, SongSearchResult } from '../../shared/types';
+import { ImportResult, Song, SongBlock, SongSearchResult } from '../../shared/types';
 import { toFtsQuery } from './fts';
 
 // Escapes SQL LIKE metacharacters so a literal '%' or '_' typed into the browse box
@@ -129,4 +129,59 @@ export function reorderBlocks(db: Database.Database, songId: number, orderedIds:
     ids.forEach((id, index) => update.run(index, id, songId));
   });
   tx(orderedIds);
+}
+
+/** The neutral shape every song source translates itself into before calling importSongs. */
+export interface SongInput {
+  title: string;
+  ccliNumber: string | null;
+  blocks: { label: string; text: string }[];
+}
+
+/**
+ * The bulk write path for song sources (D12). One transaction; each song is upserted by
+ * title and its blocks are replaced wholesale — a (type,label) pair can repeat within one
+ * song (so blocks can't be upserted by label), and a re-import must also drop blocks the
+ * source no longer has. song_blocks_fts follows via the D-09 triggers.
+ *
+ * Callers are responsible for making titles unique within one call; a later song with the
+ * same title replaces an earlier one's blocks.
+ */
+export function importSongs(db: Database.Database, songs: SongInput[]): ImportResult & { importedTitles: string[] } {
+  const result: ImportResult & { importedTitles: string[] } = {
+    file: '',
+    kind: 'songs',
+    imported: 0,
+    skipped: 0,
+    errors: [],
+    importedTitles: [],
+  };
+  const upsertSong = db.prepare(
+    `INSERT INTO songs (title, ccli_number) VALUES (?, ?)
+     ON CONFLICT(title) DO UPDATE SET ccli_number = excluded.ccli_number`
+  );
+  const getSongId = db.prepare(`SELECT id FROM songs WHERE title = ?`);
+  const deleteBlocks = db.prepare(`DELETE FROM song_blocks WHERE song_id = ?`);
+  const insertBlock = db.prepare(`INSERT INTO song_blocks (song_id, label, text, display_order) VALUES (?, ?, ?, ?)`);
+
+  db.transaction(() => {
+    songs.forEach((song, index) => {
+      // I-12: trim so titles differing only in surrounding whitespace collide honestly.
+      const title = typeof song.title === 'string' ? song.title.trim() : '';
+      try {
+        if (title === '') throw new Error('song has no title');
+        if (!Array.isArray(song.blocks) || song.blocks.length === 0) throw new Error('song has no verse blocks');
+        upsertSong.run(title, song.ccliNumber ?? null);
+        const songId = (getSongId.get(title) as { id: number }).id;
+        deleteBlocks.run(songId);
+        song.blocks.forEach((block, order) => insertBlock.run(songId, block.label, block.text, order));
+        result.imported += 1;
+        result.importedTitles.push(title);
+      } catch (err) {
+        result.skipped += 1;
+        result.errors.push({ identifier: title || `song row ${index}`, reason: (err as Error).message });
+      }
+    });
+  })();
+  return result;
 }

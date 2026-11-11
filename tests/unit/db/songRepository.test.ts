@@ -14,6 +14,7 @@ import {
   updateBlock,
   deleteBlock,
   reorderBlocks,
+  importSongs,
 } from '../../../src/main/db/songRepository';
 import { normalizeForSearch } from '../../../src/main/db/fts';
 
@@ -159,5 +160,61 @@ describe('songRepository', () => {
     const reordered = getBlocksForSong(db, 1);
     expect(reordered.map((b) => b.label)).toEqual(['Verse 2', 'Verse 1', 'Chorus 1']);
     expect(reordered.map((b) => b.displayOrder)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('importSongs', () => {
+  it('upserts by title and replaces blocks wholesale, dropping blocks the source no longer has', () => {
+    importSongs(db, [
+      { title: 'Shrinking Song', ccliNumber: null, blocks: [{ label: 'Verse 1', text: 'One' }, { label: 'Verse 2', text: 'Two' }] },
+    ]);
+    const result = importSongs(db, [
+      { title: 'Shrinking Song', ccliNumber: '42', blocks: [{ label: 'Verse 1', text: 'Only one left' }] },
+    ]);
+    expect(result).toMatchObject({ kind: 'songs', imported: 1, skipped: 0, importedTitles: ['Shrinking Song'] });
+    const [song] = findSongsByTitle(db, 'Shrinking');
+    expect(song.ccliNumber).toBe('42');
+    expect(getBlocksForSong(db, song.id).map((b) => b.text)).toEqual(['Only one left']);
+  });
+
+  // "How Sweet the name of Jesus Sounds": six blocks, three distinct (type,label) pairs.
+  it('keeps every block of a repeated label, in display order', () => {
+    importSongs(db, [
+      {
+        title: 'How Sweet the name of Jesus Sounds',
+        ccliNumber: null,
+        blocks: [
+          { label: 'Verse 1', text: 'How sweet the name of Jesus sounds' },
+          { label: 'Verse 1', text: 'It makes the wounded spirit whole' },
+          { label: 'Verse 2', text: 'Dear name, the rock on which I build' },
+        ],
+      },
+    ]);
+    const [song] = findSongsByTitle(db, 'How Sweet');
+    const blocks = getBlocksForSong(db, song.id);
+    expect(blocks.map((b) => b.displayOrder)).toEqual([0, 1, 2]);
+    expect(blocks[1].text).toBe('It makes the wounded spirit whole');
+  });
+
+  it('keeps the search index in sync when blocks are replaced', () => {
+    importSongs(db, [{ title: 'Indexed', ccliNumber: null, blocks: [{ label: 'Verse 1', text: 'Aardvark lyric' }] }]);
+    importSongs(db, [{ title: 'Indexed', ccliNumber: null, blocks: [{ label: 'Verse 1', text: 'Zebra lyric' }] }]);
+    expect(searchSongContent(db, 'Aardvark')).toHaveLength(0);
+    expect(searchSongContent(db, 'Zebra')).toHaveLength(1);
+  });
+
+  it('trims titles and skips songs with no title or no blocks, importing the rest', () => {
+    const result = importSongs(db, [
+      { title: '   ', ccliNumber: null, blocks: [{ label: 'Verse 1', text: 'x' }] },
+      { title: 'Empty', ccliNumber: null, blocks: [] },
+      { title: '  Real Song  ', ccliNumber: null, blocks: [{ label: 'Verse 1', text: 'y' }] },
+    ]);
+    expect(result.imported).toBe(1);
+    expect(result.skipped).toBe(2);
+    expect(result.errors).toEqual([
+      { identifier: 'song row 0', reason: 'song has no title' },
+      { identifier: 'Empty', reason: 'song has no verse blocks' },
+    ]);
+    expect(findSongsByTitle(db, 'Real Song')[0].title).toBe('Real Song');
   });
 });

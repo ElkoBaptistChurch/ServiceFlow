@@ -13,8 +13,9 @@ contextBridge.exposeInMainWorld('api', {
   initialTheme,
   listTranslations: () => ipcRenderer.invoke(IpcChannels.ListTranslations),
   getActiveTranslation: () => ipcRenderer.invoke(IpcChannels.GetActiveTranslation),
-  setActiveTranslation: (translation: string) =>
-    ipcRenderer.invoke(IpcChannels.SetActiveTranslation, translation),
+  setActiveTranslation: (code: string) => ipcRenderer.invoke(IpcChannels.SetActiveTranslation, code),
+  deleteTranslation: (code: string) => ipcRenderer.invoke(IpcChannels.DeleteTranslation, code),
+  restoreBundledBible: (code: string) => ipcRenderer.invoke(IpcChannels.RestoreBundledBible, code),
   getTheme: () => ipcRenderer.invoke(IpcChannels.GetTheme),
   setTheme: (theme: Theme) => ipcRenderer.invoke(IpcChannels.SetTheme, theme),
   findBibleBooks: (query: string, translation: string) =>
@@ -55,8 +56,9 @@ contextBridge.exposeInMainWorld('api', {
   setActiveStyle: (contentType: ContentType, styleId: number) =>
     ipcRenderer.invoke(IpcChannels.SetActiveStyle, contentType, styleId),
   getServerUrls: () => ipcRenderer.invoke(IpcChannels.GetServerUrls),
-  pickOpenlpFiles: () => ipcRenderer.invoke(IpcChannels.PickOpenlpFiles),
-  importOpenlp: (filePaths: string[]) => ipcRenderer.invoke(IpcChannels.ImportOpenlp, filePaths),
+  pickOpenlp: (kind: 'bible' | 'songs') => ipcRenderer.invoke(IpcChannels.PickOpenlp, kind),
+  importOpenlpBibles: (filePaths: string[]) => ipcRenderer.invoke(IpcChannels.ImportOpenlpBibles, filePaths),
+  importOpenlpSongs: (filePath: string) => ipcRenderer.invoke(IpcChannels.ImportOpenlpSongs, filePath),
   onLiveStateChanged: (callback: (state: LiveState) => void) => {
     const listener = (_event: unknown, state: LiveState) => callback(state);
     ipcRenderer.on(IpcChannels.LiveStateChanged, listener);

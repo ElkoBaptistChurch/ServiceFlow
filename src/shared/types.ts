@@ -3,16 +3,44 @@ export type Theme = 'light' | 'dark';
 export type Testament = 'OT' | 'NT' | 'AP';
 export type StagedItemType = ContentType;
 
+export type BibleSource = 'bundled' | 'openlp' | 'file';
+
 export interface BibleBook {
   /** ServiceFlow's own surrogate id. Unique across translations. */
   id: number;
-  /** Translation code from the source file's metadata, e.g. 'KJV'. */
-  translation: string;
-  /** The id this book had in its OpenLP source file. Only unique within a translation. */
-  sourceBookId: number;
+  /** Code of the translation this book belongs to, e.g. 'KJV'. */
+  translationCode: string;
+  /** Canonical USFM code, e.g. 'JHN' (src/shared/bibleBooks.ts). */
+  bookCode: string;
+  /** Display name as this translation spells it. */
   name: string;
   testament: Testament;
   sortOrder: number;
+}
+
+export interface BibleTranslation {
+  /** Short identifier the app uses everywhere, e.g. 'KJV'. Case-insensitive unique. */
+  code: string;
+  name: string;
+  source: BibleSource;
+  licenseNote: string | null;
+  bookCount: number;
+  verseCount: number;
+}
+
+/** A verse as [chapter, verse, text]. */
+export type VerseTuple = [chapter: number, verse: number, text: string];
+
+/**
+ * The neutral shape every Bible source (bundled resource, OpenLP adapter, future
+ * formats) translates itself into before calling bibleRepository.upsertTranslation.
+ */
+export interface TranslationInput {
+  code: string;
+  name: string;
+  source: BibleSource;
+  licenseNote?: string | null;
+  books: { bookCode: string; name?: string | null; verses: VerseTuple[] }[];
 }
 
 export interface BibleVerse {
@@ -93,9 +121,9 @@ export interface ImportError {
   reason: string;
 }
 
-/** One imported file. The operator needs per-file counts, not one merged number. */
-export interface ImportSourceSummary {
-  /** Basename of the file the operator picked. */
+/** One imported file (or other source). The operator needs per-source counts, not one merged number. */
+export interface ImportResult {
+  /** Basename of the file the operator picked, or the source's name. */
   file: string;
   kind: 'songs' | 'bible' | 'unknown';
   /** Translation code, for bible sources only. */
@@ -106,7 +134,7 @@ export interface ImportSourceSummary {
 }
 
 export interface ImportSummary {
-  sources: ImportSourceSummary[];
+  sources: ImportResult[];
   imported: number;
   skipped: number;
   errors: ImportError[];

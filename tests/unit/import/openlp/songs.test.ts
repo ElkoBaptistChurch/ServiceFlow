@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { applySchema } from '../../../src/main/db/schema';
-import { importOpenlpSongs } from '../../../src/main/import/openlpSongsImporter';
-import { createFixtureSongsDb } from '../../helpers/openlpFixtures';
-import { getBlocksForSong, findSongsByTitle } from '../../../src/main/db/songRepository';
-import { searchSongContent } from '../../../src/main/db/songRepository';
+import { applySchema } from '../../../../src/main/db/schema';
+import { importOpenlpSongs } from '../../../../src/main/import/openlp/songs';
+import { createFixtureSongsDb } from '../../../helpers/openlpFixtures';
+import { getBlocksForSong, findSongsByTitle } from '../../../../src/main/db/songRepository';
+import { searchSongContent } from '../../../../src/main/db/songRepository';
 
 const ALL_CREATURES_XML = `<?xml version='1.0' encoding='UTF-8'?>
 <song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[All creatures of our God and King,

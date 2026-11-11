@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSongLyrics, typeCodeToName } from '../../../src/main/import/songXml';
+import { parseSongLyrics, typeCodeToName } from '../../../../src/main/import/openlp/songXml';
 
 const ABIDE_WITH_ME_XML = `<?xml version='1.0' encoding='UTF-8'?>
 <song version="1.0"><lyrics><verse type="v" label="1"><![CDATA[Abide with me, fast falls the eventide;

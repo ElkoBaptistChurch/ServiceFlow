@@ -1,17 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { ContentType, ImportError, ImportSummary, OutputStyle } from '../../shared/types';
+import type { BibleTranslation, ContentType, OutputStyle } from '../../shared/types';
 import StyleCard from './StyleCard';
 import StylePreviewModal from './StylePreviewModal';
-
-// Importers pass raw SQLite error text straight through as `reason` alongside their own
-// hand-authored sentences (e.g. "song has no lyrics data"). A volunteer can't parse
-// "NOT NULL constraint failed: bible_verses.text" -- flag it as technical rather than
-// pretend it explains anything.
-const RAW_SQLITE_TEXT = /constraint failed|no such (?:column|table)|SQLITE_/i;
-
-function describeSkipReason(reason: string): string {
-  return RAW_SQLITE_TEXT.test(reason) ? `technical detail: ${reason}` : reason;
-}
 
 interface Props {
   /** Lets App re-render search/content against the newly chosen translation. */
@@ -25,10 +15,8 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
   const [urlsFailed, setUrlsFailed] = useState(false);
   const [bibleStyles, setBibleStyles] = useState<OutputStyle[]>([]);
   const [songStyles, setSongStyles] = useState<OutputStyle[]>([]);
-  const [translations, setTranslations] = useState<string[]>([]);
+  const [translations, setTranslations] = useState<BibleTranslation[]>([]);
   const [translation, setTranslation] = useState<string>('');
-  const [summary, setSummary] = useState<ImportSummary | null>(null);
-  const [importing, setImporting] = useState(false);
   // Which URL was just copied, so the button can confirm it worked. A non-technical
   // volunteer hand-transcribing an IP-and-port URL into OBS is exactly the situation a
   // silent no-op (or a silent throw, if navigator.clipboard is unavailable) would hurt.
@@ -81,20 +69,6 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
     await window.api.setActiveStyle(contentType, styleId);
     if (contentType === 'bible') setBibleStyles(await window.api.getOutputStyles('bible'));
     else setSongStyles(await window.api.getOutputStyles('song'));
-  }
-
-  async function runImport() {
-    if (importing) return;
-    setImporting(true);
-    try {
-      const files = await window.api.pickOpenlpFiles();
-      if (files.length === 0) return;
-      // The main process classifies each file by its schema — no filename guessing here.
-      setSummary(await window.api.importOpenlp(files));
-      loadTranslations();
-    } finally {
-      setImporting(false);
-    }
   }
 
   function styleSection(contentType: ContentType, styles: OutputStyle[]) {
@@ -178,50 +152,23 @@ export default function SettingsScreen({ onTranslationChange }: Props) {
               the list doesn't contain. Rather than let the browser silently fall back to
               selecting the first option, show the stored value as its own disabled entry
               so the dropdown never disagrees with what's actually in effect. */}
-          {translation !== '' && !translations.includes(translation) && (
+          {translation !== '' && !translations.some((t) => t.code === translation) && (
             <option value={translation} disabled>
-              {translation} (not imported)
+              {translation} (not installed)
             </option>
           )}
           {translations.map((t) => (
-            <option key={t} value={t}>
-              {t}
+            <option key={t.code} value={t.code}>
+              {t.code === t.name ? t.code : `${t.code} — ${t.name}`}
             </option>
           ))}
         </select>
-        {translations.length === 0 && <p className="settings-section__body">No translations imported yet.</p>}
+        {translations.length === 0 && (
+          <p className="settings-section__body">No Bibles installed — add one in Library → Bibles.</p>
+        )}
       </section>
       {styleSection('bible', bibleStyles)}
       {styleSection('song', songStyles)}
-      <section className="settings-section">
-        <h3 className="settings-section__title">Import from OpenLP</h3>
-        <p className="settings-section__body">
-          Pick your OpenLP song database and any Bible translation files — ServiceFlow works out which is which.
-        </p>
-        <button className="btn-pill" onClick={runImport} disabled={importing}>
-          {importing ? 'Importing…' : 'Import from OpenLP'}
-        </button>
-        {summary && (
-          <ul className="import-summary">
-            {summary.sources.map((s, i) => (
-              <li key={i}>
-                {s.file} ({s.kind}
-                {s.translation ? `, ${s.translation}` : ''}): {s.imported.toLocaleString()} imported,{' '}
-                {s.skipped} skipped
-                {s.errors.length > 0 && (
-                  <ul>
-                    {s.errors.slice(0, 5).map((e: ImportError, j) => (
-                      <li key={j}>
-                        {e.identifier} — {describeSkipReason(e.reason)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
     {zoomStyle && (
       <StylePreviewModal

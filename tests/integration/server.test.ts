@@ -27,7 +27,10 @@ beforeEach(async () => {
   applySchema(db);
   seedDefaultOutputStyles(db);
   db.prepare(
-    `INSERT INTO bible_books (id, translation, source_book_id, name, testament, sort_order) VALUES (43, 'KJV', 43, 'John', 'NT', 43)`
+    `INSERT INTO bible_translations (id, code, name, source, updated_at) VALUES (1, 'KJV', 'King James Version', 'bundled', '')`
+  ).run();
+  db.prepare(
+    `INSERT INTO bible_books (id, translation_id, book_code, name, testament, sort_order) VALUES (43, 1, 'JHN', 'John', 'NT', 43)`
   ).run();
   db.prepare(
     `INSERT INTO bible_verses (id, book_id, chapter, verse, text) VALUES (1, 43, 3, 16, 'For God so loved the world.')`

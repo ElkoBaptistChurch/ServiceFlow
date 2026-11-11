@@ -27,6 +27,13 @@ beforeEach(() => {
     updateSongBlock: vi.fn().mockResolvedValue(undefined),
     deleteSongBlock: vi.fn().mockResolvedValue(undefined),
     reorderSongBlocks: vi.fn().mockResolvedValue(undefined),
+    pickOpenlp: vi.fn().mockResolvedValue(['/openlp/data/songs/songs.sqlite']),
+    importOpenlpSongs: vi.fn().mockResolvedValue({
+      sources: [{ file: 'songs.sqlite', kind: 'songs', imported: 556, skipped: 0, errors: [] }],
+      imported: 556,
+      skipped: 0,
+      errors: [],
+    }),
   };
 });
 
@@ -327,5 +334,59 @@ describe('SongLibraryPanel', () => {
 
     fireEvent.keyDown(window, { key: 's', ctrlKey: true });
     expect(window.api.updateSong).not.toHaveBeenCalled();
+  });
+
+  describe('Import from OpenLP', () => {
+    it('picks one songs file, imports it, shows the summary inline and refreshes the list', async () => {
+      const onContentChanged = vi.fn();
+      render(<SongLibraryPanel onContentChanged={onContentChanged} />);
+      await screen.findByText('Amazing Grace');
+      const callsBefore = (window.api.findSongsByQuery as any).mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: /import from openlp/i }));
+
+      await waitFor(() => expect(window.api.pickOpenlp).toHaveBeenCalledWith('songs'));
+      await waitFor(() => expect(window.api.importOpenlpSongs).toHaveBeenCalledWith('/openlp/data/songs/songs.sqlite'));
+      expect(await screen.findByText(/songs\.sqlite \(songs\): 556 imported/)).toBeInTheDocument();
+      await waitFor(() => expect((window.api.findSongsByQuery as any).mock.calls.length).toBeGreaterThan(callsBefore));
+      expect(onContentChanged).toHaveBeenCalled();
+    });
+
+    it('asks before discarding unsaved edits, since an import replaces song blocks', async () => {
+      render(<SongLibraryPanel />);
+      fireEvent.click(await screen.findByText('Amazing Grace'));
+      fireEvent.change(await screen.findByDisplayValue('Amazing Grace'), { target: { value: 'Amazing Grace (edited)' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /import from openlp/i }));
+
+      const dialog = await screen.findByRole('alertdialog');
+      expect(dialog).toHaveTextContent(/discard them and import from OpenLP/i);
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      expect(window.api.pickOpenlp).not.toHaveBeenCalled();
+      expect(screen.getByDisplayValue('Amazing Grace (edited)')).toBeInTheDocument();
+    });
+
+    it('does not import when the file dialog is cancelled', async () => {
+      (window.api.pickOpenlp as any).mockResolvedValue([]);
+      render(<SongLibraryPanel />);
+      fireEvent.click(await screen.findByRole('button', { name: /import from openlp/i }));
+      await waitFor(() => expect(window.api.pickOpenlp).toHaveBeenCalled());
+      expect(window.api.importOpenlpSongs).not.toHaveBeenCalled();
+    });
+  });
+
+  it('shows an empty state for an empty library', async () => {
+    (window.api.findSongsByQuery as any).mockResolvedValue([]);
+    render(<SongLibraryPanel />);
+    expect(await screen.findByText('No songs yet — add one, or import from OpenLP.')).toBeInTheDocument();
+  });
+
+  it('does not show the empty state for a search with no hits', async () => {
+    render(<SongLibraryPanel />);
+    await screen.findByText('Amazing Grace');
+    (window.api.findSongsByQuery as any).mockResolvedValue([]);
+    fireEvent.change(screen.getByLabelText('Search songs'), { target: { value: 'zzz' } });
+    await waitFor(() => expect(screen.queryByText('Amazing Grace')).toBeNull());
+    expect(screen.queryByText(/No songs yet/)).toBeNull();
   });
 });
