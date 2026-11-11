@@ -4,7 +4,7 @@ dist-electron/
 release/
 *.sqlite
 *.db
-openlp/
+/openlp/
 .DS_Store
 
 # Seeded design canvases (~2.6MB each, regenerated from the .dc.html sources)
